@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    
+</head>
+<body>
+    <div>
+        <input id="title" type="text" placeholder="title" />
+        <br /><br />
+        <input id="description" type="text" placeholder="description" />
+        <br /><br />
+        <button onclick="createTodo()">Add todo</button>
+        <br /><br />
+        <div id="container"></div>
+    </div>
+    <script>
+        function addTodo() {
+            const title = document.getElementById("title").value;
+            const description = document.getElementById("description").value;
+            const original = document.getElementById("container").innerHTML;
+            document.getElementById("container").innerHTML = original +
+                `<div>
+                    <div>${title}</div>
+                    <div>${description}</div>
+                    <button>Mark as done</button>
+                </div>`
+        }
+
+        let globalId = 0;
+        function createTodo() {
+            const title = document.getElementById("title").value;
+            const description = document.getElementById("description").value;
+            const original = document.getElementById("container")
+            original.appendChild(createChild(title, description, ++globalId));
+        }
+
+        function markAsDone(todoId) {
+            const parent = document.getElementById(todoId);
+            parent.children[2].innerHTML = "Done!";
+        }
+
+        function createChild(title, description, id) {
+            const child = document.createElement("div");
+            const firstGrandChild = document.createElement("div");
+            firstGrandChild.innerHTML = title;
+            const secondGrandChild = document.createElement("div");
+            secondGrandChild.innerHTML = description;
+            const thirdGrandChild = document.createElement("button");
+            thirdGrandChild.innerHTML = "Mark as done";
+            thirdGrandChild.setAttribute("onclick", `markAsDone(${id})`);
+            child.appendChild(firstGrandChild);
+            child.appendChild(secondGrandChild);
+            child.appendChild(thirdGrandChild);
+            child.setAttribute("id", id);
+            return child;
+        }
+
+        function updateDOMAccToState(state) {
+            const parent = document.getElementById("container");
+            parent.innerHTML = "";
+            for (let i = 0; i < state.length; i++) {
+                const child = createChild(state[i].title, state[i].descripton, state[i].id);
+                parent.appendChild(child);
+            }
+        }
+
+        window.setInterval(async function() {
+            const res = await fetch("https://sum-server.100xdevs.com/todos");
+            const json = await res.json();
+            updateDOMAccToState(json.todos);
+        },5000);
+
+        // Better Solution - just update the differences by comparing to the previous state
+
+        // updateDOMAccToState([{
+        //     title: "Gym",
+        //     description: "Gym Jao",
+        //     id: "1"
+        // }, {
+        //     title: "Gym",
+        //     description: "Gym Jao",
+        //     id: "2"
+        // }])
+    </script>
+</body>
+</html>
