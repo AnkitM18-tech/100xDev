@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DB-Auth</title>
+</head>
+<body>
+    <button onclick="getData()">Get Data From API</button>
+    <script>
+        
+        // async function approach
+        async function getData() {
+            const response = await fetch("https://fakerapi.it/api/v1/persons");
+            const persons = await response.json();
+            console.log(persons.data);
+        }
+       
+       /* 
+       // promise chaining approach
+       function getData() {
+        fetch("https://fakerapi.it/api/v1/persons")
+        .then(function(response) {
+            return response.json();
+        }).then(function(response){
+            console.log(response.data);
+        })
+        }
+        */
+    </script>
+</body>
+</html>
+
+<!-- 
+    Authentication
+    --------------------------------------------------------------
+    1. Hashing -- before storing in the DB, we need to hash the input data via some hashing function -- such that the same input always gives us the same hashed output. -- You can never decrypt the hashed output to know the original password. -- everytime you send the password to Backend , it will hash the password again and then compare it against the stored hashed password in the database. ---- 1 way - convert a string to hash, never the hash back to the original string. --- one directional --- given the o/p no one can find out the input. --- a small change in i/p can change the o/p by a lot.
+
+    2. Encryption -- same as hashing, but it is 2 way -- you can covert the password to hashed password and hashed password to original provided with a provided key. -- something like locking the data. -- the key is something that is private - general use case is Images that we store on FB, Insta first gets encrypted and then stored in somewhere and when we fetch those, they gets decrypted first then we see those. -- only using the private key we can decrypt the encrypted string. -- Bidirectional -- encrypted using a password -- string can be decrypted using the same password.
+
+    3. JWT - JSON Web Token -- Some encryption or hashing function works only for JSON inputs. -- Takes some JSON input and encrypts it to a long string (Token). -- Has 3 parts -- Significantly different from hashing and encryption. -- Anyone who has your JWT can see your original content sent via the string. -- jwt.io. -- It is not hashed or protected in anyway. It just converts a complex object (Headers (Algorithm + Token Type) + Payload (Data) + Verify Signature) into a long string. - Added in Headers as Authorization. -- Anyone can decode the string but the verification can only be done on the server side by some secret password which has been stored somewhere in the DB or any other place. --
+    original complex object ==> jwt.encode ==> long auth string + secret password ==> jwt.verify ---- signature verify at backend. and returns original data if the secret password is correctly provided. -- it is a digital signature -- Anyone can see the original output given the signature -- which can be verified only using the password.(not exposed to anyone)
+
+    4. Local Storage -- A place in browser where we can store some data. Like -- Authentication Tokens -- User Language Preferences -- User Theme Preferences -- Everytime someone signs in, the backend returns a token which is stored in localStorage, which gets relayed back to the Backend for verification for that active session. When we log out, the token gets removed from localStorage.
+ -->
