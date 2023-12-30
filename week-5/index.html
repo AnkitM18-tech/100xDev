@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+    <body>
+        <!-- <button onclick="onButtonPress()">Counter 0</button> -->
+        <div id="parentDiv"></div>
+        <script>
+        /* 
+        // javascript way of changing state
+        function onButtonPress() {
+            const currentValue = document.getElementById("btn").innerHTML;
+            console.log(currentValue.split(" "))
+            const currentCounter = currentValue.split(" ")[1];
+            const newCounter = parseInt(currentCounter) + 1;
+            document.getElementById("btn").innerHTML = "Counter " + newCounter;
+        } 
+        */
+
+        // React way of changing state and adding components -- React takes the code and compiler spits back some HTML,CSS/JS code.
+        let state = {
+            count: 0
+        }
+
+        function onButtonPress() {
+            state.count++;
+            buttonComponentReRender();
+        }
+
+        function buttonComponentReRender() {
+            document.getElementById("parentDiv").innerHTML = "";
+            const component = buttonComponent(state.count);
+            document.getElementById("parentDiv").appendChild(component);
+        }
+
+        function buttonComponent(count) {
+            const button = document.createElement("button");
+            button.innerHTML = `Counter ${count}`;
+            button.setAttribute("onclick", "onButtonPress()");
+            return button;
+        }
+
+        buttonComponentReRender();
+        </script>
+    </body>
+</html>
