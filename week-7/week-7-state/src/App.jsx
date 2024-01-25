@@ -88,3 +88,5 @@ export default App;
 // use Recoil value = only use the value, don't care about updating the value
 // use Set Recoil State = set the value, don't care about the accessing the value
 // Components using states need to be wrapped by RecoilRoot.
+// We store states in the Lowest Common Ancestor component to minimize re-renders of components.
+// So we need to push it(states) down as much as possible in the component hierarchy.
