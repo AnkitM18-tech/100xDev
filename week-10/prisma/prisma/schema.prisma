@@ -1,0 +1,58 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+//   npx prisma studio -> opens up in browser to visualize the tables.
+
+// Cohort - 2 Schema
+model User {
+  id        Int    @id @default(autoincrement())
+  email     String @unique
+  firstName String
+  lastName  String
+  password  String
+  todos     Todo[]
+}
+
+model Todo {
+  id          Int     @id @default(autoincrement())
+  title       String
+  done        Boolean @default(false)
+  description String?
+  userId      Int
+  user        User    @relation(fields: [userId], references: [id])
+}
+
+//-----------------------
+// Cohort - 1 Schema --> command to run migration => npx prisma migrate dev --name Initialize the schema
+// model User {
+//   id    Int     @id @default(autoincrement())
+//   email String  @unique
+//   name  String?
+//   posts Post[]
+// }
+
+// model Post {
+//   id        Int     @id @default(autoincrement())
+//   title     String
+//   content   String?
+//   published Boolean @default(false)
+//   author    User    @relation(fields: [authorId], references: [id])
+//   authorId  Int
+// }
+
+// tsc -b => build
+// node dist/fileName.js => to run
+// prisma studio to visualize
+
+// Update the database  and the prisma client after updating schema =>
+// npx prisma migrate dev --name relationship
+// npx prisma generate
