@@ -1,0 +1,122 @@
+1. We can't host our own backend server and people can't access it from their system, because we don't have a public ip address.These Public IPs are limited in the world. So AWS, GCP, Azure they have set up or leased data centers across the world. So we rent a machine / server from them, it contains public IPs , so when we host our application on these servers people can access it from anywhere.
+
+2. E.g : google.com domain -> points to an public IP -> limited in the world -> so everyone can access it.We can point a domain to an public IP and people can access it from there system and the control will reach the server through routers.
+
+3. Key pair will download a .pem file for us to connect to the AWS machine. SSH - Secure Shell
+
+4. We generally don't put the port number at the end of the domain name -> google.com:3000 X , so by default we don't set the port number like domain_name:port_number.
+
+5. By default HTTP port: 80, HTTPS port: 443 => domain_name === domain_name:80 for HTTP traffic and :443 for HTTPS traffic. So we are telling AWS to open port 80 and 443 to open and be accessible. Good practice is to open only HTTPS 443 port. So AWS will reject request from other ports, and only accept request in 443 port.
+
+6. keep your .pem file in a folder and reach that directory from terminal. "ssh -i pem_file_name ubuntu@ip_of_the_machine"
+
+The above command will throw a error UNPROTECTED PRIVATE KEY, bad permissions.
+
+- run chmod 700 .pem_file => from your Git Bash. then the above command will run perfectly.
+
+7. ssh helps us to securely access the shell of the machine from our system, so that we can do stuff (install packages, do some installation, clone repos etc). for that we need the certificate downloaded from AWS key-pair.
+
+8. If the certificate is too open, i.e it has too many permissions and can be accessed by many other users, then AWS gives warning. So if you are using a password file, then it should be very restricted. so we need to run "chmod 700 .pem_file" command before ssh-ing to the machine. so binary for the 700 - (rwx) 111 000 000 made it more restrictive so that the warning doesn't show up and we can ssh into the machine. (rwx - read, write, execute.) permissions for 111 user / owner - No 000 group - No 000 others.
+
+ls -ltr => shows you permissions for the folder.
+
+
+9. - When we are just starting out serverless makes sense, where we pay per request basis, but as our application scales we should move to cloud provider like AWS, where we can increase the compute and storage as per our needs, at that time serverless becomes more expensive.
+Owning a machine makes more sense at scale.
+
+10. - install node via nvm command -> curl -o- ... | bash, then copy and paste the export ... things and paste it on bash and run it to configure nvm path.
+
+Ideally we should run dockerized containers, instead of configuring node and everything by ourselves everytime.
+
+This is just the raw way of doing things.
+
+11. After setting up we won't be able to hit our application at port 8080, our security group will restrict us from doing it.
+
+So we can go to security groups and add rules there Custom TCP - 8080 port - Anywhere IPv4 and IPv6, then we will be able to hit the application at port 8080 using the public IP. public IP:8080/todos - to get todos - in this case.
+
+12. => kubernetes => network chunk is a good place to learn. EC2 is a VM.
+
+Don't try to listen on port 443 or 80 , i.e app.listen(80/443).
+
+13. Reverse Proxy - Nginx
+
+It is not a good way to access your application on EC2 using an ugly looking URL and port number. Node JS process won't be able to access to port 80, but even if we somehow got access then we can't run two processes on port 80, that would be conflicting.
+
+e.g:- we ran a single process on port 80, if we want to run another process on port 80 that would be conflicting.We bought a single server with public IP 1.2.3.4 - If We want to point two domain names (a.10x.com and b.100x.com)to one server -> conflicting -> how will we run two different processes here on the same port. We can not do this. Which is why it makes sense to use something called "Reverse Proxy".
+
+EC2 instance -> 1 process on port 8080 and another process on port 8081. what we can do is on port 80 we can run something else called "Reverse Proxy". Then it can decide if the incoming url is a.10x.com then point the request to 8080 and if incoming url is b.100x.com then it will redirect to 8081. It is useful because we can start multiple processes running on different ports and depending upon some constraints we can point the requests to different processes.
+
+If a site is being blocked to be accessed from some network, we use proxy servers or VPNs to connect to those restricted sites. So our request is not going to the site server directly, it is being proxied from some other server to that site and we are able to access it. Reverse proxy is there at the final server, running on 80 port, Reverse Proxy is listening and according to some criteria / constraints it redirects / routes our request to a process / one of many backends running on that server on different ports.
+
+So in this way we can provide our clients with a cleaner URL, without the port number as it will always hit port 80 where reverse proxy is running and it will redirects / routes different requests to different processes.
+
+Single EC2 server -> we run multiple processes / backends -> by default port which is 80 -> running a single process that will route our requests based on the domain name to use the reverse proxy.
+
+14. NGINX - open source software for web serving, reverse proxying, caching, load balancing, media streaming and more. It can act as a proxy server for email and reverse proxy and load balancing for HTTP, TCP and UPD Servers.
+
+install it ->
+
+sudo apt update
+sudo apt install nginx
+
+after this nginx should automatically be started on port 80, so if we visit the url we will land on nginx welcome page.
+
+when we have our domain name , we can go to the service provider's page (google domains) and in DNS we can add our entry ->
+
+give it a name -> A for the record -> paste the IP and save. then we can access the IP using the name given and land on nginx welcome page.
+
+Now we need to create a reverse proxy ->
+
+sudo rm sudo vi /etc/nginx/nginx.conf - remove the original default conf file.
+
+sudo vi /etc/nginx/nginx.conf
+
+add below code ->
+
+events {
+    # Event directives...
+}
+
+http {
+	server {
+        listen 80;
+        server_name be1.100xdevs.com;
+
+        location / {
+            proxy_pass http://localhost:8080;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
+        }
+	}
+
+    server {
+        listen 80;
+        server_name be2.100xdevs.com;
+
+        location / {
+            proxy_pass http://localhost:8081;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
+        }
+	}
+}
+
+we can create multiple servers inside it and route them.
+
+sudo nginx -s reload - then restart the nginx server.- whenever we change our configuration of nginx we need to restart it.
+
+node index.js - start backend server
+
+Now we will be able to hit the domain name.
+
+If we want to keep our process even after closing the connection -> inside the AWS machine -> repository -> run "npm i -g pm2" (pm2 is a process manager) it will keep on running the "index.js" even if we close the terminal. -> after installing -> "pm2 start index.js" -> now the application will be started indefinitely.
+
+-> We can connect to the server on the aws console rather than using git bash - by selecting the instance and clicking on connect.
+
+-> EC2 = Hotel => processes running on ports = rooms => reverse proxy = manager for urls and routes them to their respective ports(rooms). => we don't have to put the port number their explicitly it will automatically redirect.
