@@ -1,0 +1,69 @@
+Deploying Frontends on AWS ->
+
+Storage -> Object Stores - Store Objects
+
+Distribution -> CDNs - Share / Access the stored objects
+
+Youtube - a lot of mp4 files
+pinterest - a lot of image(.jpg,.png files)
+
+Any site for that reason, returns some .html, .js, .css files from a server. returns some content/objects [at least 5kb - 1mb] in short, which are not simple texts and not database queries.
+
+Frontends - Backends - DBs
+
+users, todos, video metadata => should be stored in DBs.
+objects => images(.jpg,.png,.webp,.svg), videos(.mp4,.mp3,.mkv) these should not be stored in conventional Databases. These should be stored in "object stores".These are specifically designed to store objects.
+
+e.g -> AWS - S3 - simple storage service
+
+We can think it of like google drive link -> it will return us a s3 based url via which we can access the object.
+
+Directly accessing the object via <object url> is not a good practice, CDNs are better ways of handling this. -> Content Delivery Networks
+
+CDNs -> There are many object stores in the world, let that be the source of the object, when people ask for the object, don't distribute through the s3 url directly. Use the CDN urls and tell the CDN urls the source of the object.
+
+create s3 store -> create cloudfront distribution / or any other CDNs -> point it to the source s3.store.aws.com -> cloudfront returns us a url (distribution domain name).
+
+so whenever we access the object a.mp4 => "d2sr.cf.net/a.mp4" -> it goes to the closest server near us -> it knows the source is "s3.store.aws.com/a.mp4" -> it gets the file from the source and caches it for a certain amount of time. Now the object is not only on the source store, it now cached in here as well.
+
+If the object is only present in a single source then it would be harder for everyone to access. CDNs create a bunch of POPs - Point of Presence. It makes the content delivery much easier and faster.
+
+If anyone asks for something through the cloudfront / CDNs url. => then their request will be routed to the closest POP, which will then retrieve the object from the source store and caches it and deliver. Which is much more efficient and faster than hitting the source store again and again.
+
+So, Object Stores are associated with CDNs. CDNs have multiple POPs around the world which helps in delivering the content from the source faster. If the nearest POP already have the object, then it will return it directly, else it will fetch from store and cache it, so future requests are served faster.
+
+Object Store -> storing asset objects
+CDNs -> distributing the stored content from object stores. -> So if a object is being requested multiple times then it will consume bandwidth and bills will increase. It is expensive operation.
+
+There are other CDNs as well which are compatible with s3 buckets, apart from cloudfront.
+
+Backend requests can't be cached, as the responses are different for different users (user specific data can't be the same). But frontend objects / assets are the same for everyone, hence can be cached. For Backends edge Networks make sense, where the backend can be hosted in multiple places in multiple servers and the person can send request to the nearest edge server for faster responses.No caching involved.
+
+For frontend objects it can get really expensive as the file sizes can be huge. so replicating the file in multiple POPs like edge servers is not a good idea.
+
+/*
+
+This approach will not work for frameworks that use Server side rendering (like Next.js)
+This will work for basic React apps, HTML/CSS/JS apps
+
+*/
+
+1. For frontends, mp4 files, images, Object stores  + CDNs are a better approach.
+
+2. You can’t use the same for backends, since every request returns a different response. Caching doesn’t make any sense there. 
+
+3. You can use edge networks for backends (deploy your backend on various servers on the internet) but data can’t be cached in there.
+
+
+the dist folder generated using npm run build -> if we open it in a browser, then we will see a white page because we need to distribute in a cleaner way, to serve this better we need to install "npm i -g serve".now we can navigate to dist folder and run serve on terminal to see our dist build. we can also serve it using our own express server on a port. can't open directly on a browser.
+
+React -> build ->spits out HTML, CSS , JS files -> put it to S3 so that people can access it.
+
+
+Origin Access Control (OAC) is a feature in Cloudfront, which allows you to restrict direct access to the content stored in your origin, such as an Amazon S3 bucket or a web server, ensuring that users can only access the content through the CDN distribution and not by directly accessing the origin URL.
+
+root object - if the user hits the cloudfront what should be the default location - if not specified then index.html, else we can mention there what would be the default object.
+
+Custom Error Response -> we can create it in the dashboard itself and give the response page path as well. Wencan set error paths for different error responses.
+
+Also invalidations we can create on the dashboard. In order to clear the cache (the error caches) => we can add object paths to /* so that the data gets invalidated and won't get cached.
