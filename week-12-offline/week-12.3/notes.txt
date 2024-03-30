@@ -1,0 +1,52 @@
+Actionable Docker ->
+
+    Install Docker Desktop
+
+    What are we using docker for?
+
+        - Docker let’s you do a lot of things.
+        - It let’s you containerise your applications.
+        - It let’s you run other people’s code + packages in your machine.
+        - It let’s you run common software packages inside a container  (For eg - Mongo, Postgres etc)
+        - container is something like a mini computer inside our computer. container has its own filesystem, network, ports etc. It lets us isolate our code and run it separately not interfering with other processes running on our system.
+        - we can also route our system requests to the container's port as well.
+    - with this, we don't have to worry about installing packages on different machines again and again, we can just start the container with a single command.
+
+    Where we can get packages from?
+
+        - Just like you can push your code to Github/Gitlab.
+        - You can push images to docker registries
+        - Dockerhub, AWS registry , google registry etc.
+        - Images are like packages having codes, file system and dependencies put together in a place which can be used by everyone to start a container on their own machine.
+        - These images can be pulled from the Docker registries.
+        - After pulling the images, we can un these images to start a container for that package. (mongo, postgres, etc)
+        - Images in execution are called containers.
+
+    Common commands to know
+
+        - docker run - Running a simple image - e.g docker run mongo - will start a mongo container with container's own default port 27017 - You will notice you can’t open it in MongoDB Compass on your system.
+        
+        - The reason is that you haven’t added a port mapping
+
+        - Adding a port mapping - docker run  -p 27017:27017 mongo => (system port : container port) => will start the container for mongo. - after adding a port map we can access the container on our MongoDB compass. - map the port of your system (27017) to the port of the container pulled and started by docker (27017). - want the requests coming to the system's port 27017 to be routed / redirected to the container's own port 27017. so that we can access it on our system.
+
+        - Starting in detached mode - docker run -d -p 27017:27017 mongo
+
+        - Inspecting a container - docker ps - show you all the containers you are running.
+
+        - Stopping a container - docker kill <container_id>
+
+    Common packages until now -
+        - Mongo - docker run -d -p 27017:27017 mongo
+
+        - Postgres - docker run -e POSTGRES_PASSWORD=mysecretpassword -d -p 5432:5432 postgres - environment variable is required for us to use the postgres image. It must not be empty or undefined. - This env variable sets the superuser password for the postgres. default superuser is defined by the POSTGRES_USER environment variable.
+
+        - The connection string for this postgres would be - postgresql://postgres:mysecretpassword@localhost:5432/postgres
+        - If I am specifying the -e POSTGRES_USER=something - then the connection string will also change => 
+        postgresql://something:mysecretpassword@localhost:5432/something
+
+        - user:password@host:port/db_name - default db_name and user = postgres -> from official docs
+
+        - -e POSTGRES_PASSWORD=mysecretpassword - environment variable.
+
+        - Refer official Docs - hub.docker.com
