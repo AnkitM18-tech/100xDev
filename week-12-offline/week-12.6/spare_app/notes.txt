@@ -1,0 +1,37 @@
+Lookout for ->
+
+    https://www.prisma.io/docs/orm/prisma-client/deployment/edge/deploy-to-cloudflare-workers
+
+Serverless environments have one big problem when dealing with databases. 
+
+    1. There can be many connections open to the DB since there can be multiple workers open in various regions
+    2. Prisma the library has dependencies that the cloudflare runtime doesn’t understand.as they don't use nodejs.
+
+Connection pooling in prisma for serverless env
+💡
+    https://www.prisma.io/docs/accelerate
+    https://www.prisma.io/docs/orm/prisma-client/deployment/edge/deploy-to-cloudflare-workers
+
+Databases have a limit to the max connections they can have. As serverless environments use workers, at some point the db won't accept any further connections.
+
+So rather than connecting directly to the database and exhaust the connection limit of db, they can connect to a connections pool and the pool will then connect to the database.
+
+Project ---> Cloudflare workers ---> Connection pool ---> DB
+
+Cloudflare expects us to do this, if we want to deploy a prisma application to it. More about it in blog post link above.
+
+- While using Cloudflare workers, the way to inject env variables is via wrangler.toml file. We put our connection pool url (i.e accelerate connection url) in .toml file.
+
+- But while doing migrations and all we still need to connect to the database directly, not via connection pool. So the original db url (directUrl) is put inside .env file - to make direct connections to the database. prisma CLI commands that require a direct connection to the database use the URL in the directUrl argument.
+
+While the connection pool url is put inside .toml file, in order to make connections to the connection pool. DATABASE_URL in .toml file -> connect to prisma accelerate connection pool. All env variables that we want to use in index.ts will be in .toml file. So our final app uses the connection pool url.
+
+Prisma Accelerate extension ->
+    npm install @prisma/extension-accelerate
+
+To generate prisma client that connects to our db through pool now ->
+    npx prisma generate --no-engine - as we want to run our application in serverless environment, --no-engine flag is needed.
+
+    - the generated client has a smaller bundle size and is optimized for edge environments like cloudflare workers.
+    
+    - the smaller bundle size is due to the fact that the interfaces talking to the db(prisma ORM engines) are no longer bundled with Prisma Client as this logic is now handled by Prisma Accelerate.
