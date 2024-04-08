@@ -1,0 +1,221 @@
+week-14.3 - Next JS Backend
+
+// way to write backend endpoints in nextjs and extract stuff
+
+// api/user/route.tsx
+
+export async function POST(req:NextRequest) {
+    // body
+    const body = await req.json();
+    console.log(body);
+    // headers
+    console.log(req.headers.get("authorization"));
+    // query parameters
+    console.log(req.nextUrl.searchParams.get("name"));
+
+    return NextResponse.json({
+        message: "Signed In"
+    })
+}
+
+----
+
+Better fetches =>
+
+For the root page, we are fetching the details of the user by hitting an HTTP endpoint in getUserDetails
+
+Current solution =>
+
+import axios from "axios";
+
+async function getUserDetails() {
+  try {
+    const response = await axios.get("http://localhost:3000/api/user")
+	  return response.data;
+  }  catch(e) {
+    console.log(e);
+  }
+}
+
+export default async function Home() {
+  const userData = await getUserDetails();
+
+  return (
+    <div className="flex flex-col justify-center h-screen">
+        <div className="flex justify-center">
+            <div className="border p-8 rounded">
+                <div>
+                    Name: {userData?.name}
+                </div>
+                
+                {userData?.email}
+            </div>
+        </div>
+    </div>
+  );
+}
+
+*** getUserDetails runs on the server. This means you’re sending a request from a server back to the server ***
+
+Better solution => 
+
+import { PrismaClient } from "@prisma/client";
+
+const client = new PrismaClient();
+
+async function getUserDetails() {
+  try {
+    const user = await client.user.findFirst({});
+	  return {
+      name: user?.username,
+      email: user?.username
+    }
+  }  catch(e) {
+    console.log(e);
+  }
+}
+
+export default async function Home() {
+  const userData = await getUserDetails();
+
+  return (
+    <div className="flex flex-col justify-center h-screen">
+        <div className="flex justify-center">
+            <div className="border p-8 rounded">
+                <div>
+                    Name: {userData?.name}
+                </div>
+                
+                {userData?.email}
+            </div>
+        </div>
+    </div>
+  );
+}
+
+Instead of hitting the end point of the server, we can directly write the database logic in the getUserDetails method. Don't do a fetch call if it is the same server. We can directly query the database.
+
+As long as we are writing the method in a server component, the prisma logic can't reach the frontend. The problem starts when we use it in a client component.
+
+----
+
+Singleton Prisma client
+
+Ref - https://www.prisma.io/docs/orm/more/help-and-troubleshooting/help-articles/nextjs-prisma-client-dev-practices
+ 
+- Create db/index.ts
+
+- Add a prisma client singleton inside it
+
+import { PrismaClient } from '@prisma/client'
+
+console.log("Inside db.ts");
+
+const prismaClientSingleton = () => {
+  console.log("prisma client instance");
+  return new PrismaClient()
+}
+
+declare global {
+  var prisma: undefined | ReturnType<typeof prismaClientSingleton>
+}
+
+const prisma = globalThis.prisma ?? prismaClientSingleton()
+
+export default prisma
+
+if (process.env.NODE_ENV !== 'production') globalThis.prisma = prisma
+
+Update imports of prisma everywhere ->
+import client from "@/db"
+
+When we use prisma with Nextjs in "development mode" as we make changes to the code, new connections are established with the prisma client, which will throw an error eventually when it reaches the max number of connections. It will not be a problem in production. So we can use singleton prisma client as the best practice.
+
+In development => next dev clears Nodejs cache on run. This in turn initializes a new prisma client instance eachtime due to hot reloading that creates a connection to the database. This can quickly exhaust the connection as each PrismaClient has its own connection pool.
+
+Solution => instantiate a single instance PrismaClient and save it on the globalThis object. Then we keep a check to only instantiate PrismaClient if it is not on the globalThis object, otherwise we use the same instance again if already present.
+
+----
+
+----
+
+Server Actions ->
+
+Ref - https://nextjs.org/docs/app/building-your-application/data-fetching/server-actions-and-mutations
+
+Right now, we wrote an API endpoint that let’s the user sign up
+
+export async function POST(req: NextRequest) {
+    const body = await req.json();
+    // should add zod validation here
+    const user = await client.user.create({
+        data: {
+            username: body.username,
+            password: body.password
+        }
+    });
+
+    console.log(user.id);
+
+    return NextResponse.json({ message: "Signed up" });
+}
+
+What if you could do a simple function call (even on a client component that would run on the server?) (similar to RPC ) - Remote Procedure Call
+💡
+Under the hood, still an HTTP request would go out. But you would feel like you’re making a function call
+
+Steps to follow =>
+
+Create actions/user.ts file (you can create it in a different folder)
+
+Write a function that takes username and password as input and stores it in the DB
+
+"use server"
+
+import client from "@/db"
+
+export async function signup(username: string, password: string) {
+    // should add zod validation here
+    const user = await client.user.create({
+        data: {
+            username: username,
+            password: password
+        }
+    });
+
+    console.log(user.id);
+
+    return "Signed up!"
+}
+
+Update the Signup.tsx file to do the function call
+
+import { signup } from "@/actions/user";;
+
+...
+
+<button onClick={async () => {
+    const response = await signup(username, password);
+    localStorage.setItem("token", response);
+    router.push("/")
+}} type="button" className="mt-8 w-full text-white bg-gray-800 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2">Sign in</button>
+
+Check the network tab
+
+Benefits of server actions =>
+
+Single function can be used in both client and server components
+
+Gives you types of the function response on the frontend (very similar to trpc)
+
+Can be integrated seamlessly with forms (ref https://www.youtube.com/watch?v=dDpZfOQBMaU)
+
+It is a function defined on the server and the client component can call that function, and we can access that function from the server component as well.(under the hood it's still an http request)
+
+we don't have to write axios.get / axios.post here => we can simply sort of call this server function, which will under the hood make the http request to the server.
+
+In the server component as well we can call the same function. This won't make an http request to the server.
+
+We can expose a route / server actions to achieve the same goal.
+
+----
