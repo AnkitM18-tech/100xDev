@@ -218,4 +218,10 @@ In the server component as well we can call the same function. This won't make a
 
 We can expose a route / server actions to achieve the same goal.
 
+
+Answer to why network tab doesn't show response -
+
+Try Right clicking on the request, select `copy as curl` and import it in postman
+You will see the server does respond back with a response, its just that the browser doesn't know how to parse it and hence we dont see anything
+
 ----
