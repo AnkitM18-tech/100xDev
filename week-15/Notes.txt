@@ -1,0 +1,286 @@
+Why Docker?
+
+Docker/containers are important for a few reasons - 
+
+    - Kubernetes/Container orchestration
+    - Running processes in isolated environments
+    - Starting projects/auxilary services locally
+
+Containerization -
+
+    Containers are a way to package and distribute software applications in a way that makes them easy to deploy and run consistently across different environments. They allow you to package an application, along with all its dependencies and libraries, into a single unit that can be run on any machine with a container runtime, such as Docker.
+
+Why containers
+
+    - Everyone has different Operating systems
+    - Steps to run a project can vary based on OS
+    - Extremely harder to keep track of dependencies as project grows
+
+Benefits of using containers
+
+    - Let you describe your configuration in a single file
+    - Can run in isolated environments
+    - Makes Local setup of Open Source projects a breeze
+    - Makes installing auxiliary services/DBs easy
+
+For Reference, the following command starts mongo in all operating systems - 
+
+docker run -d -p 27017:27017 mongo
+
+Docker isn’t the only way to create containers
+
+---
+
+Docker is a YC backed company, started in ~2014
+They envisioned a world where containers would become mainstream and people would deploy their applications using them
+That is mostly true today
+Most projects that you open on Github will/should have docker files in them (a way to create docker containers)
+ 
+Ref - https://www.ycombinator.com/blog/solomon-hykes-docker-dotcloud-interview/
+
+
+In our machine =>
+
+(docker run mongo) --> docker engine --> docker registry
+Terminal
+                   <-- done     |     <--
+                        Mongo DB container
+
+
+Terminal / Docker GUI / REST APIs (ways to connect to docker engine) talks to docker engine, which let's us fetch images from the registry (if not already fetched) --> create containers
+
+Images are already written packages that are being pushed to the registry, so that other users can fetch and use.We can run own containers from the images we have created.
+
+As an application/full stack developer, you need to be comfortable with the following terminologies -
+
+    - Docker Engine
+    - Docker CLI - Command line interface
+    - Docker registry
+
+1. Docker Engine -
+
+Docker Engine is an open-source containerization technology that allows developers to package applications into container.
+Containers are standardized executable components combining application source code with the operating system (OS) libraries and dependencies required to run that code in any environment.
+
+2. Docker CLI -
+
+The command line interface lets you talk to the docker engine and lets you start/stop/list containers
+
+docker run -d -p 27017:27017 mongo
+
+Docker cli is not the only way to talk to a docker engine. You can hit the docker REST API to do the same things
+
+3. Docker registry -
+
+The docker registry is how Docker makes money. 
+
+It is similar to github, but it lets you push images rather than sourcecode
+
+Docker’s main registry - https://dockerhub.com/
+
+Mongo image on docker registry - https://hub.docker.com/_/mongo
+
+----
+
+Images vs containers
+
+Docker Image =>
+
+A Docker image is a lightweight, standalone, executable package that includes everything needed to run a piece of software, including the code, a runtime, libraries, environment variables, and config files.
+
+A good mental model for an image is Your codebase on github
+
+Docker Container =>
+
+A container is a running instance of an image. It encapsulates the application or service and its dependencies, running in an isolated environment.
+
+A good mental model for a container is when you run node index.js on your machine from some source code you got from github
+
+We can run multiple instances of an image in our machine on different ports.
+
+Port mapping =>
+
+docker run -d -p 27018:27017 mongo
+
+the containers have their own ports, so we need to map our system's port to the container's port in order to access them. i.e => <system_port>:<container_port> - so that any request coming to the machine will get routed to the container's port. Docker by default will run the containers in an isolated environment, so in order to expose some of the functionality via the container ports we need to map them with our machine ports. If applications doesn't need to interact with internet then the containers can just run like that, we don't need mapping for that.
+
+
+Common docker commands =>
+
+    - docker images
+    - docker ps
+    - docker run
+    - docker build
+
+
+1. docker images
+Shows you all the images that you have on your machine
+
+2. docker ps
+Shows you all the containers you are running on your machine
+
+3. docker run
+Lets you start a container
+-p ⇒ let’s you create a port mapping
+-d. ⇒ Let’s you run it in detatched mode
+
+4. docker build
+Lets you build an image. We will see this after we understand how to create your own Dockerfile
+
+5. docker push
+Lets you push your image to a registry
+
+6. Extra commands
+
+docker kill - kills the container - docker kill <container_id>
+
+remove image => docker rmi <image_name> (--force optional)
+
+docker exec - docker exec -it <container_id / name> <commands> -  to exectue a command inside a container
+
+Examples
+
+List all contents of a container folder =>
+
+docker exec <container_name_or_id> ls /path/to/directory
+
+Running an Interactive Shell=>
+
+docker exec -it <container_name_or_id> /bin/bash
+
+If we don't want to run some command interactively we can ommit the -it flag.
+
+docker start container_name - to start existing container
+docker stop container_name - stop existing container
+
+to get out of container command while keeping the container running => ctrl + d
+
+
+
+----
+
+Dockerfile =>
+
+What is a Dockerfile
+
+If you want to create an image from your own code, that you can push to dockerhub, you need to create a Dockerfile for your application.
+
+A Dockerfile is a text document that contains all the commands a user could call on the command line to create an image.
+
+How to write a dockerfile =>
+
+A dockerfile has 2 parts
+    - Base image
+
+    - Bunch of commands that you run on the base image (to install dependencies like Node.js)
+
+
+Let’s write our own Dockerfile
+
+Let’s try to containerise this backend app - https://github.com/100xdevs-cohort-2/week-15-live-1
+
+```
+
+---
+FROM node:20
+
+WORKDIR /app
+
+COPY . .
+
+RUN npm install
+RUN npx prisma generate
+RUN npm run build
+
+EXPOSE 3000
+--- The above chunk runs when we create an image = bootstrapping the project => setup
+
+CMD ["node", "dist/index.js"] - This runs when we start a image / container
+
+```
+
+Common commands
+
+- WORKDIR: Sets the working directory for any RUN, CMD, ENTRYPOINT, COPY instructions that follow it.
+
+- RUN: Executes any commands in a new layer on top of the current image and commits the results.
+
+- CMD: Provides defaults for executing a container. There can only be one CMD instruction in a Dockerfile.
+
+- EXPOSE: Informs Docker that the container listens on the specified network ports at runtime.
+
+- ENV: Sets the environment variable.
+
+- COPY: Allow files from the Docker host to be added to the Docker image - ignore node_modules and dist
+
+https://github.com/100xdevs-cohort-2/week-15-live-1
+
+Building images =>
+
+Now that you have a dockerfile in your project, try building a docker image from it
+
+docker build -t image_name . => at the end we need t give a .(dot) to let docker know where to build the image from.(in our case the same directory (.) else mention path instead of . (path of Dockerfile))
+ 
+Now if you try to look at your images, you should notice a new image created
+
+docker images
+ 
+Add a .dockerignore so that node_modules don’t get copied over
+
+Running images =>
+
+docker run -p 3000:3000 image_name
+
+Try visiting localhost:3000
+
+Passing in env variables =>
+
+Never commit the .env files or secrets. Neither shall we hardcode the env variables. We should always inject it while starting a container, during execution. Even if we didn't have that in .env, when we inject the env variable prisma client will take it from the CLI.
+
+When we deploy the app in EC2 or something the env variables are put in there so that there won't be any leaks of secrets.
+
+    - docker run -p 3000:3000 -e DATABASE_URL="postgres://avnadmin:password/defaultdb?sslmode=require" image_name
+
+The -e argument let’s you send in environment variables to your node.js app
+
+----
+
+docker containers are lightweight as compared to VMs.
+
+VMs are created on Cloud providers -> They own very large hyper visors(with so much resources) instead of buying large number of machines and from there (hyper-visors) we get a VM (small portion/ shared resources) to run.
+
+Also we should not self host databases, we should use cloud providers for hosting databases. Because our data is persisted there and multiple copies of it are being made so that our data doesn't get lost. Once we kill the container the local database data will just get erased.
+
+-----
+
+if we don't put the .env file and npx prisma generate won't have access to the .env file and DATABASE_URL.
+
+DATABASE_URL="--" node dist/index.js => this is a way to inject environment variables into node js application.
+
+----
+
+Pushing to dockerhub ->
+
+Once you’ve created your image, you can push it to dockerhub to share it with the world.
+
+- Signup to dockerhub
+- Create a new repository
+- Login to docker cli
+    - docker login
+
+you might have to create an access token - https://docs.docker.com/security/for-developers/access-tokens/
+
+- Push to the repository
+    - docker push your_username/your_reponame:tagname
+
+
+Anytime the code changes, we need to rebuild it and then push it to dockerhub.
+
+for local development,we push the .env.example file to github so that a new developer can set it up their local.
+
+for prod development we can inject them so no need.
+
+CMD ["node","",""] => command then we give arguments to it inside the array after the command separated by commas.
+
+----
+
