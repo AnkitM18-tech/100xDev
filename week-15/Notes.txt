@@ -722,3 +722,45 @@ If we want to build the backend from the dockerfile =>
 
 -----
 
+Bind Mounts =>
+
+Binds a folder on our machine to a folder inside the container , so if either of the folder change, changes will reflect in both. Useful in some use cases.
+
+e.g: hot reloading scenarios -> when we want to dockerize the next js app for development.
+
+WORKDIR /nextapp - can be anything
+
+Dockerfile =>
+
+FROM node:21-alpine
+
+WORKDIR /nextapp
+
+COPY package* .
+COPY ./prisma .
+
+RUN npm install
+RUN npx prisma generate
+
+COPY . .
+
+CMD ["npm","run","dev"]
+
+build image and run it inside a container =>
+
+    - docker build -t nextapp .
+    - docker run -p 3000:3000 nextapp
+
+hot reloading won't work anymore even though we make changes to the file on our machine. because the container just copied over the files once, it is not keeping track of the changes. The changes done on my machine are not going to the container. Only if we change the files inside the container, then only the app hot reloads.
+
+So in order to hot reload the app, we need to send the changes done on our machine to the container.
+
+bind mount our "app" folder in vscode to "/nextapp/app" folder in the container. then the changes will sync in both the folders and hot reloading works.
+
+Bind Mounts =>
+
+    - docker run -v ./app:/nextapp/app -p 3000:3000 nextapp
+
+else we can mount the entire folder also
+
+    - docker run -v .:/nextapp -p 3000:3000 nextapp
