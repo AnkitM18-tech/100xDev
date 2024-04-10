@@ -284,3 +284,335 @@ CMD ["node","",""] => command then we give arguments to it inside the array afte
 
 ----
 
+Layers in Docker =>
+
+In Docker, layers are a fundamental part of the image architecture that allows Docker to be efficient, fast, and portable. A Docker image is essentially built up from a series of layers, each representing a set of differences from the previous layer.
+
+How layers are made - 
+
+- Base Layer: The starting point of an image, typically an operating system (OS) like Ubuntu, Alpine, or any other base image specified in a Dockerfile.
+
+- Instruction Layers: Each command in a Dockerfile creates a new layer in the image. These include instructions like RUN, COPY, which modify the filesystem by installing packages, copying files from the host to the container, or making other changes. Each of these modifications creates a new layer on top of the base layer.
+
+- Reusable & Shareable: Layers are cached and reusable across different images, which makes building and sharing images more efficient. If multiple images are built from the same base image or share common instructions, they can reuse the same layers, reducing storage space and speeding up image downloads and builds.
+
+- Immutable: Once a layer is created, it cannot be changed. If a change is made, Docker creates a new layer that captures the difference. This immutability is key to Docker's reliability and performance, as unchanged layers can be shared across images and containers.
+
+
+Layers practically -
+
+For a simple Node.js app - https://github.com/100xdevs-cohort-2/week-15-live-2
+
+FROM node:20  --- Layer 1
+WORKDIR /usr/src/app   --- Layer 2
+COPY . .  --- Layer 3
+RUN npm install  --- Layer 4
+RUN npm run build  --- Layer 5
+RUN npx prisma generate  --- Layer 6
+
+
+EXPOSE 3000
+CMD ["node","dist/index.js"]
+
+Observations - 
+
+- Base image creates the first layer
+
+- Each RUN, COPY , WORKDIR  command creates a new layer
+
+- Layers can get re-used across docker builds (notice CACHED in 1/6)
+
+----
+
+Why layers?
+
+If you change your Dockerfile, layers can get re-used based on where the change was made
+
+If a layer changes, all subsequent layers also change
+
+Case 1 - You change your source code
+
+FROM node:20  --- Layer 1 cached
+WORKDIR /usr/src/app  --- Layer 2 cached
+
+COPY . .  --- Layer 3 changed
+RUN npm install --- Layer 4 changed
+RUN npm run build --- Layer 5 changed
+RUN npx prisma generate  --- Layer 6 changed
+
+EXPOSE 3000
+CMD ["node","dist/index.js"]
+
+Case 2 - You change the package.json file (added a dependency)
+
+FROM node:20  --- Layer 1 cached
+WORKDIR /usr/src/app  --- Layer 2 cached
+
+COPY . .  --- Layer 3 changed
+RUN npm install --- Layer 4 changed
+RUN npm run build --- Layer 5 changed
+RUN npx prisma generate  --- Layer 6 changed
+
+EXPOSE 3000
+CMD ["node","dist/index.js"]
+
+Thought experiment =>
+
+How often in a project do you think dependencies change ?
+How often does the npm install layer need to change?
+Wouldn’t it be nice if we could cache the npm install step considering dependencies don’t change often?
+
+----
+
+Optimising Dockerfile =>
+
+What if we change the Dockerfile a bit - 
+
+FROM node:20
+
+WORKDIR /usr/src/app
+
+------
+COPY package* . - since package.json doesn't change often - anything that starts with package copies it to the image
+COPY ./prisma . - same for prisma folder - anything inside prisma folder copies it to the image
+------
+    
+RUN npm install - depends on package.json, so only run when there is a change in package.json (any file change that starts with package) else cached.
+RUN npx prisma generate - depends on prisma schema, so only run when there is a change in prisma folder else cached.
+
+--------
+COPY . . - rest of the source code might change, so we copied the unchanged parts at first in order to maximize our cached layers. - copies over the rest of the source code
+
+RUN npm run build
+--------
+
+EXPOSE 3000
+
+CMD ["node", "dist/index.js", ]
+
+--->
+
+We first copy over only the things that npm install and npx prisma generate need
+
+Then we run these scripts
+
+Then we copy over the rest of the source code
+
+Case 1 - You change your source code (but nothing in package.json/prisma)
+
+FROM node:20 -- Layer 1 cached
+
+WORKDIR /usr/src/app  -- Layer 2 cached
+
+------
+COPY package* .  -- Layer 3 cached
+COPY ./prisma .  -- Layer 4 cached
+------
+    
+RUN npm install  -- Layer 5 cached
+RUN npx prisma generate  -- Layer 6 cached
+
+--------
+COPY . .  -- Layer 7 uncached
+RUN npm run build
+--------
+
+EXPOSE 3000
+
+CMD ["node", "dist/index.js", ]
+
+Case 2 - You change the package.json file (added a dependency)
+
+FROM node:20 -- Layer 1 cached
+
+WORKDIR /usr/src/app  -- Layer 2 cached
+
+------
+COPY package* .  -- Layer 3 uncached
+COPY ./prisma .  -- Layer 4 uncached
+------
+    
+RUN npm install  -- Layer 5 uncached
+RUN npx prisma generate  -- Layer 6 uncached
+
+--------
+COPY . .  -- Layer 7 uncached
+RUN npm run build
+--------
+
+EXPOSE 3000
+
+CMD ["node", "dist/index.js", ]
+
+----
+
+If a layer is cached, then everything before that layer is also cached. If a layer is uncached, then everything after that layer become uncached. If we didn't change anything and build again, then every layer will be shown as cached. as nothing is changed so docker will reuse the previously cached image layers.
+
+While working with complex applications, We want high number of layers to be cached and less number of layers to be uncached.since layers can be reused. We want to decrease the build time, by caching the max number of layers cached as possible.
+
+In our day to day work, the package.json / prisma schema remain unchanged unless there is a need for new dependencies. Most of the time we will be working in the src folder and components.
+
+so npm install doesn't need to be run often as it only depends on the package.json.
+
+time of build is not dependent upon the number of layers => so we can optimize the dockerfile by adding layers. there won't be any significant changes in build time.
+
+
+We shall try to deferr the things that changes the most to be copied towards the end of the dockerfile just before the final build (npm run build). i.e => index.ts, db.ts etc.
+
+expensive unchanged things we shall try to push up the dockerfile to cache.(npm install, npx prisma generate etc)
+
+-----
+
+Networks and volumes =>
+
+Networks and volumes are concepts that become important when you have multiple containers running in which you -
+
+- Need to persist data across docker restarts
+- Need to allow containers to talk to each other
+
+```
+Backend Container (Express) --- Network --- Database Container (Mongo) --- Volume
+```
+
+We didn’t need networks until now because when we started the mongo container, it was being accessed by a Node.js process running directly on the machine. If there are container communication required networks are required there.
+
+```
+node index.js ---> Database Container(Mongo) ---> Volume
+```
+
+Volumes =>
+
+If you restart a mongo docker container, you will notice that your data goes away. 
+This is because docker containers are transitory (they don’t retain data across restarts)
+
+1. Without volumes =>
+
+Start a mongo container locally =>
+
+    - docker run -p 27017:27017 -d mongo
+
+Open it in MongoDB Compass and add some data to it
+
+Kill the container
+    - docker kill <container_id>
+
+Restart the container
+    - docker run -p 27017:27017 -d mongo
+
+Try to explore the database in Compass and check if the data has persisted (it wouldn’t)
+
+2. With volumes =>
+
+Create a volume
+    - docker volume create volume_database
+
+Mount the folder in mongo which actually stores the data to this volume -
+    - docker run -v volume_database:/data/db -p 27017:27017 mongo
+
+Open it in MongoDB Compass and add some data to it
+
+Kill the container
+    - docker kill <container_id>
+
+Restart the container
+    - docker run -v volume_database:/data/db -p 27017:27017 mongo
+
+we need to restart by attaching the same volume.
+
+-v volume_database:/data/db =>
+volume_database mounted to /data/db in the container.
+
+for postgres it might differ.for mongodb we need to persist the /data/db folder.
+
+Try to explore the database in Compass and check if the data has persisted (it will!)
+
+```
+MongoDB Container [ /data/db ] ====== Volume
+```
+
+Folder 1 -
+    - Dockerfile
+        - FROM node:20 -- layer 1
+        - WORKDIR /app -- layer 2
+        - ...
+        - ...diff lines
+        - asd
+
+Folder 2 -
+    - Dockerfile
+        - FROM node:20 -- layer 1
+        - WORKDIR /app -- layer 2
+        - ...
+        - ...diff lines
+        - asd
+
+here layer 1 + layer 2 = cached layers can be reused in different folders while building images. Each layer is being added on top of the cached layer and that is also being cached so that it can be reused in future image builds if necessary.
+
+Even if we have different Dockerfiles in different folders, the layers created while building a image in one folder can be reused in the other folder as well. Docker keeps the track of layers created and whenever they can be reused, it applies to the image. All Dockerfiles can use the cached image from cached layers stored.
+
+Whatever is causing the layers to be uncached, we should move it down the Dockerfile.
+
+If anything in the source code changes, we need to build the image again unless the Dockerfile is written to be hot reloaded.
+
+----
+
+Network =>
+ 
+In Docker, a network is a powerful feature that allows containers to communicate with each other and with the outside world.
+
+Docker containers can’t talk to each other by default.
+
+localhost on a docker container means it's own network and not the network of the host machine
+
+How to make containers talk to each other?
+
+    - Attach them to the same network
+
+Clone the repo - https://github.com/100xdevs-cohort-2/week-15-live-2.2
+
+Build the image
+    - docker build -t image_tag .
+
+Create a network
+    - docker network create my_custom_network
+
+Start the backend process with the network attached to it
+    - docker run -d -p 3000:3000 --name backend --network my_custom_network image_tag
+
+Start mongo on the same network
+    - docker run -d -v volume_database:/data/db --name mongo --network my_custom_network -p 27017:27017 mongo
+
+    port mapping is not necessary as the containers are not communicating through the host, they are connected via network.
+
+Check the logs to ensure the db connection is successful
+    - docker logs <container_id>
+
+Try to visit an endpoint and ensure you are able to talk to the database
+
+If you want, you can remove the port mapping for mongo since you don’t necessarily need it exposed on your machine
+
+Types of networks =>
+
+    - Bridge: The default network driver for containers. When you run a container without specifying a network, it's attached to a bridge network. It provides a private internal network on the host machine, and containers on the same bridge network can communicate with each other.
+
+    - Host: Removes network isolation between the container and the Docker host, and uses the host's networking directly. This is useful for services that need to handle lots of traffic or need to expose many ports.
+
+--------
+
+we were able to connect to mongo, postgres containers from our machine because we have port mapping. If we make a container for the Express application then we need to connect them to the common n/w in order for them to communicate.
+
+the data in the container persists untill we kill the container. through start and stop the data will persist.
+
+volume concept is limited to data being persisted locally, it can't be pushed to dockerhub or something.In kubernetes we have persistent volumes.
+
+In a container, in /data/db folder the mongo db data is being stored,so we should attach it to the volume. for other containers it can be different (postgres or other).
+
+RUN - runs when the image is being built
+CMD - runs when the container starts
+
+docker shines when we have 5-6 services to start (FE,BE,DB,Redis, Auxillary Service). generally for simple applications we don't need docker / kubernetes.
+
+Docker cache invalidation and checksum calculation : docker checks file changes across image builds. it determines whether a file has changed and whether the cache needs to be invalidated by calculating a checksum for each file involved in COPY or ADD instructions in a Dockerfile. Calculate checksum based on file content for every file.
+
+----
+
