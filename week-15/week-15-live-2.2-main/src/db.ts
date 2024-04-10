@@ -1,6 +1,7 @@
 import mongoose, { Schema, model } from "mongoose";
 
-const mongoUrl: string = "mongodb://mongo:27017/myDatabase";
+const mongoUrl: string =
+  process.env.MONGO_URL || "mongodb://mongo:27017/myDatabase";
 
 // In the url in place of localhost, we need to use the name given to the database while creating the container. (mongo) - this name resolves to the ip of the container.
 

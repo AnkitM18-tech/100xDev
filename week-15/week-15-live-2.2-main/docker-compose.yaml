@@ -1,0 +1,41 @@
+# Docker Compose version
+version: "3.8"
+services:
+  mondodb:
+    image: mongo
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+  # docker run -d -v mongodb_data:/data/db --name mongodb --network my_custom_network  mongo --> specification converts to this command and then run
+
+  # If we want to build the backend from the Dockerfile on docker-compose up =>
+  # then instead of image we can write =>
+  #     build: . => will rebuild the image from the Dockerfile in the parent folder(.) when we do "docker-compose up".
+
+  backend:
+    image: backend
+    container_name: backend_app
+    depends_on:
+      - mondodb
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGO_URL="mongodb://mongodb:27017"
+
+  # docker run -d -p 3000:3000 --name backend_app --network my_custom_network backend
+
+# whenever there are multiple services in a compose file, docker by default connect/starts them with a same attached network so we don't have to create one. they can reference each other by their container_names in that network.
+
+# In case of volumes we have to write it like below, don't have to give any value to the volume, just :(colon) also we can create multiple volumes below as well.
+# volumes:
+# mongodb_data:
+# mongodb_data2:
+# ---
+
+# we can visualize the the yaml file by converting it to a json file => syntax is different, but both have key:value pairs.
+
+volumes:
+  mongodb_data:
