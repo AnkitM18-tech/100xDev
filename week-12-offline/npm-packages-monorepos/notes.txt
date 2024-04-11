@@ -1,0 +1,63 @@
+Why Packages / Modules ?
+    - Reusable Code
+    - Separation of Concern
+    - Teams can work on modules independently
+
+Zod Inference =>
+    - We do validations on backend using zod.
+    - To do the same on the frontend, instead of creating a type or interface, we should infer the zod object and use it. So that ifwe want to change the code, then we only have to change it in one place.
+    ```
+    import { z } from "zod";
+
+    const signuInput = z.object({
+        username: z.string(),
+        password: z.string()
+    })
+
+    type SignUpParams = z.infer<typeof signupInput>;
+
+    let parsedInput = signupInput.safeParse(req.body)
+    if (!parsedInput.success) {
+      return res.status(403).json({
+        msg: "error"
+      });
+    }
+    const username = parsedInput.data.username 
+    const password = parsedInput.data.password
+
+    ```
+
+If we directly import from common, TS will complain that it is outside its src folder, and we need to work it around for relative paths.
+
+If we don't add FE validations, then through Postman one can send errounous data through proxy or something.
+
+Reusable Code =>
+    - Code that can be used both in FE and BE, defined in one place. we need the zod type inference to reach the frontend.
+    -  For this we can create a new module "common".
+    - Every monorepo has to have its own package.json, tsconfig.json, so we have to bootstrap.
+    - This common repository has some code that is used in both FE and BE.
+    - In pre-monorepo, turborepo era people use to publish their own packages to npm and from their people access those packaged codes.
+
+NPM Packages =>
+    - We need to publish the package to npmjs.org
+    - create npmjs account -> "npm login" in terminal. 
+    - then change the package.json (name: "@<npmjs_username>/<package_name>, version and all") and tsconfig files (rootDir & outDir).
+    - npm publish --access=public
+    - npm pack -> will download a zip folder that contains your published package files.
+    - everytime you publish change the version of the package in package.json.
+    - then we can install the package from npm in our client and server folder.
+    - when we try to import from the package -> TS will complain that there is no declaration file found in the package. -> .d.ts file => which only contains the types of the package file, no execution/implementation logic.
+    - we need to make `"declaration": true` in tsconfig file to resolve this -> then we run "tsc" to build, now we will get .d.ts and index.js file both in dist -> and we need to publish it again.
+    - .ts --> tsc --> .js (removed interface, types and everything, just JS Logic)
+      - declaration: true -> .d.ts --> only contains the types info and declaration for it, no js/execution/implementation logic 
+      - in short -> .ts = .js + .d.ts
+
+Monorepos -> alternative to npmjs publish and use.
+    - We can use the same code from different folder by importing it the same way we did for npm packages, without having to publish on npmjs.org.
+        - npm/yarn workspaces, Lerna and Turborepo.
+        - Turbo is the most popular one mono repo framework -> turbo.build
+        - Turborepo is an intelligent build system optimized for JS and TS codebases.
+
+    - Create a new monorepo
+        - npx create-turbo@latest
+
