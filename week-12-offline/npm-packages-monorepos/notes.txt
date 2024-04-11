@@ -61,3 +61,14 @@ Monorepos -> alternative to npmjs publish and use.
     - Create a new monorepo
         - npx create-turbo@latest
 
+Turborepo lets us write sub-modules and share code between them. It does bundling under the hood. If we have Next, React, FE, BE and a bunch of things we can put them into a single folder, It let's us do this.
+
+JS Monorepos => Lerna original tool for JS Monorepos - build system for managing and publishing multiple JS/TS packages from same repository.
+
+workspaces where we have sub modules defined
+
+"workspaces": [
+    "apps/*","packages/*",
+]
+
+we can do many things without these tools but these are beneficial because they do much more conveniences.(hmr and all) - we don't need to re-publish and then use the code in other places. The whole process of re-building is taken care by turborepos.
