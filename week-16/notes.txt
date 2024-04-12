@@ -1,0 +1,252 @@
+What are monorepos ?
+
+As the name suggests, a single repository (on github lets say) that holds all your frontend, backend, devops code.
+
+Few repos that use monorepos are - 
+
+https://github.com/code100x/daily-code
+https://github.com/calcom/cal.com
+
+Do you need to know them very well as a full stack engineer ?
+
+Not exactly. Most of the times they are setup in the project already by the dev tools guy and you just need to follow the right practices.
+
+Good to know how to set one up from scratch though
+
+Why Monorepos?
+Why not Simple folders?
+Why cant I just store services (backend, frontend etc) in various top level folders?
+
+You can, and you should if your - 
+    - Services are highly decoupled (dont share any code)
+    - Services don’t depend on each other.
+        - For eg - A codebase which has a Golang service and a JS service
+
+
+Why monorepos?
+    - Shared Code Reuse
+    - Enhanced Collaboration
+    - Optimized Builds and CI/CD: Tools like TurboRepo offer smart caching and task execution strategies that can significantly reduce build and testing times.
+    - Centralized Tooling and Configuration: Managing build tools, linters, formatters, and other configurations is simpler in a monorepo because you can have a single set of tools for the entire project. 
+
+
+Common monorepo framework in Node.js =>
+
+Lerna - https://lerna.js.org/
+nx - https://github.com/nrwl/nx
+Turborepo - https://turbo.build/ — Not exactly a monorepo framework
+Yarn/npm workspaces - https://classic.yarnpkg.com/lang/en/docs/workspaces/
+ 
+We’ll be going through turborepo since it’s the most relevant one today and provides more things (like build optimisations) that others don’t
+
+History of Turborepo =>
+
+Created by Jared Palmer
+In December 2021 Acquired/aqui-hired by Vercel
+Mild speculation/came from a random source - Pretty hefty dealp
+They’ve built a bunch of products, Turborepo is the most used one
+
+Build system vs Build system orchestrator vs Monorepo framework =>
+
+Build System =>
+    - A build system automates the process of transforming source code written by developers into binary code that can be executed by a computer. For JavaScript and TypeScript projects, this process can include transpilation (converting TS to JS), bundling (combining multiple files into fewer files), minification (reducing file size), and more. A build system might also handle running tests, linting, and deploying applications.
+
+Build System Orchestrator =>
+    - TurboRepo acts more like a build system orchestrator rather than a direct build system itself. It doesn't directly perform tasks like transpilation, bundling, minification, or running tests. Instead, TurboRepo allows you to define tasks in your monorepo that call other tools (which are the actual build systems) to perform these actions. 
+
+    - Turborepo helps in dependency management during builds, caching during builds. - using a single build command, no need to build separately.
+
+    - These tools can include anything from tsc, vite etc
+
+Monorepo Framework =>
+    - A monorepo framework provides tools and conventions for managing projects that contain multiple packages or applications within a single repository (monorepo). This includes dependency management between packages, workspace configuration.
+
+Turborepo as a build system orchestrator =>
+
+    - Turborepo is a build system orchestrator . 
+    - The key feature of TurboRepo is its ability to manage and optimize the execution of these tasks across your monorepo. It does this through:
+    - Caching: TurboRepo caches the outputs of tasks, so if you run a task and then run it again without changing any of the inputs (source files, dependencies, configuration), TurboRepo can skip the actual execution and provide the output from the cache. This can significantly speed up build times, especially in continuous integration environments.
+    - Parallelization: It can run independent tasks in parallel, making efficient use of your machine's resources. This reduces the overall time needed to complete all tasks in your project.
+    - Dependency Graph Awareness: TurboRepo understands the dependency graph of your monorepo. This means it knows which packages depend on each other and can ensure tasks are run in the correct order.
+
+----
+
+Let’s initialize a simple Turborepo 
+    - Ref https://turbo.build/repo/docs
+Initialize a Turborepo
+    - npx create-turbo@latest
+Select npm workspaces as the monorepo framework
+
+If it is taking a long time for you, you can clone this starter from https://github.com/100xdevs-cohort-2/week-16-1 and run npm install inside the root folder
+
+Explore the folder structure =>
+
+There are 5 modules in our project :-
+
+End user apps (websites/core backend) - we can put other react, express etc apps also here
+    - apps/web - A Next.js website
+    - apps/docs - A Docs website that has all the documentation related to your project
+
+Helper packages
+    - packages/ui - UI packages 
+    - packages/typescript-config - Shareable TS configuration
+    - packages/eslint-config - Shareable ESLine configuration 
+
+----
+
+There are many things which can not be done in Next, so as there are other repos / helper repos as well, we can use monorepos here.
+
+Without Monorepos =>
+
+linting happens sequentially, then we have to build it sequentially the shared one going first, then tests get run at the end sequentially.
+
+The slowest possible way to run these tasks. Each task needs to wait for the previous one to finish before it can start. To improve this we need a tool that can multitask. i.e - Monorepos / Turborepo Orchestrator.
+
+With Monorepos =>
+
+Both lint and test run immediately, because they have no dependency specified in "turbo.json".
+The build task inside shared completes first, then web and docs build afterwards. Parallelization is possible in turbo repos, which makes it faster for these tasks.
+
+----
+
+Let’s try to run the project =>
+
+In the root folder, run 
+    - npm run dev
+
+You will notice two websites running on =>
+
+localhost:3000
+localhost:3001
+ 
+This means we have a single repo which has multiple projects which share code from packages/ui
+
+Exploring root package.json =>
+
+scripts -->
+
+This represents what command runs when you run -
+    - npm run build
+    - npm run dev
+    - npm run lint
+
+turbo build goes into all packages and apps and runs `npm run build` inside them (provided they have it)
+
+Same for dev and lint
+
+root package.json =>
+
+// turbo build system
+
+"scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+}
+
+// npm workspaces
+
+"workspaces": [
+    "apps/*",
+    "packages/*"
+]
+
+they start at different ports => 3000 and 3001 
+"next dev --port 3000" - in web package.json
+"next dev --port 3001" - in docs package.json
+
+-----
+
+docker caches the image / layers => .iso files with file system and everything
+turborepo caches the files / assets in .next / .cache folder => .js files
+
+monorepo framework - turborepo handles builds, linting and caching => it knows the dependencies and builds in the correct order and if nothing changed then it can simply return us the cache, no need to build again.
+
+-----
+
+Exploring packages/ui =>
+
+packages/ui/package.json
+
+"name": "@repo/ui", --> name of the package (100x/ui)
+
+"exports": {
+    "./button": "./src/button.tsx",
+    "./card": "./src/card.tsx",
+    "./code": "./src/code.tsx"
+}, ---> what all this package exports
+
+if someone is trying to import from this helper package, they can import from the above options.
+
+import {} from "@repo/ui/<the_path_name>"; 
+
+`/code || /button || /card` - <path_name>
+
+ what we can also do is put everything inside an index.ts file and then we can export that one index file.
+
+"exports": {
+    "./": "./src/index.ts"
+}
+
+index.ts ->
+
+export * from "./card";
+export * from "./button";
+export * from "./code";
+
+
+whatever we want to export from ui module we need to mention in "exports" in package.json of ui folder.
+
+the changes we did in the components will be reflected everywhere the components are being used.
+
+also we need to give it in "dependencies" of the apps/web || apps/docs package.json
+
+"dependencies": {
+    "@repo/ui": "*", --> doesn't have a numeric version - it means find it in somewhere in this module / package(@repo/ui -- name given)
+    "next": "^14.1.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+},
+
+turbo folder =>
+
+This is an interesting folder that was introduced recently. More details here - https://turbo.build/repo/docs/core-concepts/monorepos/code-generation
+
+---
+
+Exploring apps/web =>
+
+1. Dependencies ->
+    - It is a simple next.js app. But it uses some UI components from the packages/ui module
+
+2. Exploring package.json ->
+    - If you explore package.json of apps/web, you will notice @repo/ui as a dependency
+
+3. Exploring page.tsx ->
+    - This is a very big page, let’s try to see the import and usage of the Button component
+
+apps/web/app/page.tsx ->
+
+import styles from "./page.module.css";
+import {Button} from "@repo/ui/button"; -- import from packages module.
+
+<Button appName="web" className={styles.button}>
+    Click Me !
+</Button>
+
+The same Button component can be used by the apps/docs website as well.
+
+we can add or backend, react code inside apps folder as well. the things which actually starts (long running processes) are put in here.
+
+Remote Caching is the main thing turbo-repos provide. For the longest time we don't need it, but if the build time is a matter of concern where we didn't change a certain portion of the code, but still as it is inside a single repo, CI/CD will trigger the build, so turborepos will come into picture here and give the cached files stored somewhere in S3 or somewhere, and we don't need to rebuild the unchanged portion/folder of the code.
+
+Turborepo works if we use pure JS / TS.
+
+----
+
+
+
+
+
+
