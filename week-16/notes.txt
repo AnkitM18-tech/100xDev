@@ -245,8 +245,215 @@ Turborepo works if we use pure JS / TS.
 
 ----
 
+Let’s add a new page =>
+
+Try adding a new page to /admin to the apps/web next.js website.
+It should use a simple Admin component from packages/ui
+
+Steps to follow - 
+    - Create a new file admin.tsx inside packages/ui/src
+    - Export a simple React component
+
+Add the component to exports in packages/ui/package.json
+Create apps/web/app/admin/page.tsx
+Export a default component that uses the  @repo/ui/admin component
+Run npm run dev (either in root or in apps/web ) and try to see the website
+Go to http://localhost:3000/admin
+
+You can also use the packages/ui/turbo/generators to quickly bootstrap a new component
+
+Try running `npx gen react-component` and notice it’ll do step 1, 2, 3 for you in one cli call.
+
+explore turbo folder for more details.
+
+cd to packages/ui => run `npm run generate:component` - this will create the component and export it in package.json as well.
 
 
+-------
 
+Exploring turbo.json
+
+Ref - https://turbo.build/repo/docs/getting-started/create-new#3-understanding-turbojson
+
+References - https://turbo.build/repo/docs/reference/configuration#globaldependencies
+
+
+turbo.json => has configuration for turborepos.
+
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**"]
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "dev": {
+      "cache": false, - telling turborepo not to cache the results of the dev script. dev runs a persistent:dev server and produces no output, so there is nothing to cache.
+      "persistent": true - letting turbo know this is a long running dev-server, so that turbo can ensure that no other tasks are dependent on it.
+    }
+
+these configurations tell turborepos to run npm run build/lint/dev in all apps folder where there is a dev/lint/build script present in package.json when we run npm run build/lint/dev in the root folder which under the hood runs turbo build etc.. . that's how all the mentioned pipelines operate. 
+
+
+outputs -> is important in case of caching - when we first run `npm run build` it will take some time, then if the files are not changed, the subsequent runs won't take much time to build.
+
+turbo repo understands if nothing changed then no need of rebuilding, so it caches the output in these folders.
+eventually when we add more apps like react and node we need tto change it in turbo.json.
+
+down the line when we introduce deploy pipeline and script we need to change it.
+
+By going to the root folder and running `npm install` or `npm i` it will go into each folder and run npm install.(global npm install)
+
+now if we run `npm run dev` then the newly created react-app will also start.
+
+even though we didn't add the @repo/ui in dependencies in the react-app package.json, as we have used it earlier in docs and web, it was already present in the global node_modules, so TS didn't throw any error.
+
+But we should always try to stay consistent and add the required helper packages to our dependencies in package.json everytime we create a new app inside apps folder.always introduce the helper packages in all created apps where we are using it.
+
+------
+
+Adding React projects =>
+
+1. Go to the apps folder
+    - cd apps
+2. Create a fresh vite app
+    - npm create vite@latest
+
+Update package.json to include @repo/ui as a dependency
+    - "@repo/ui": "*",
+
+Run npm install in the root folder
+    - cd ..
+    - npm install
+
+Run npm run dev
+    - npm run dev
+
+- Try importing something from the ui package and rendering it
+- Add a turbo.json to the react folder to override the outputs object of this module. 
+Ref https://turbo.build/repo/docs/core-concepts/monorepos/configuring-workspaces
+
+{
+  "extends": ["//"],
+  "pipeline": {
+    "build": {
+      "outputs": ["dist/**"]
+    }
+  }
+}
+
+---
+
+Caching in Turborepo =>
+
+Ref - https://turbo.build/repo/docs/getting-started/create-new#using-the-cache
+
+    - One of the big things that make turborepo fast and efficient is caching
+    - It watches your files across builds and returns the cached response of builds if no files have changed.
+    - Try running npm run build more than once and you’ll see the second times it happens extremely fast.
+    - You can also explore the node_modules/.cache/turbo folder to see the zipped cache files and unzip them using
+    -  tar --use-compress-program=unzstd -xvf name.tar.zst
+
+----
+
+Adding a Node.js app =>
+
+Everything else remains the same (Create a new project, add typescript, add express…)
+
+The only thing that’s different is that tsc doesn’t perform great with turborepo
+
+You can use either tsup or esbuild for building your backend application
+
+- Create apps/backend
+- Initialize empty ts repo
+npm init -y
+npx tsc --init
+
+Use base tsconfig  (Ref - https://github.com/vercel/turbo/blob/main/examples/kitchen-sink/apps/api/tsconfig.json )
+
+{
+  "extends": "@repo/typescript-config/base.json",
+  "compilerOptions": {
+    "lib": ["ES2015"],
+    "module": "CommonJS",
+    "outDir": "./dist",
+  },
+  "exclude": ["node_modules"],
+  "include": ["."]
+}
+
+Add dependencies
+    - npm i express @types/express
+
+Add src/index.ts =>
+
+import express from "express";
+
+const app = express()
+
+app.get("/", (req, res) => {
+    res.json({
+        message: "hello world"
+    });
+})
+
+Update turbo.json =>
+
+{
+  "extends": ["//"],
+  "pipeline": {
+    "build": {
+      "outputs": ["dist/**"]
+    }
+  }
+}
+
+Install esbuild
+    - npm install esbuild
+
+Add build script to package.json
+    - "build": "esbuild src/index.ts --platform=node --bundle --outdir=dist"
+
+
+we don't have to put the name as `@repo/<name>` for the package name, though it's a good practice to do it like this. since we are not pushing it to npmjs, it generally doesn't matter.
+
+for the tsconfig.json file we should extend from the typescript-config folder. we should put all the sharable configs inside this folder in packages/typescript-config.
+
+for the overriding part of tsconfig, we can take reference from examples of turbo.build. -> kitchen sink example
+
+
+----
+
+Adding a common module =>
+
+A lot of times you need a module that can be shared by both frontend and backend apps
+ 
+Initialize a packages/common module
+    - cd packages
+    - mkdir common
+
+Initialize an empty node.js project
+    - npm init -y
+    - npx tsc --init
+
+Change the name to @repo/common
+    Export a few things from src/index.ts
+    - export const NUMBER = 1;
+
+Add it to the package.json of various apps (next app/react app/node app)
+    - "@repo/common": "*",
+
+Import it in there and try to use it
+Run npm install in root folder and see if it works as expected
+
+everytime you create a package or apps, do a global npm install, so that the files can be stored in node_modules.
+
+SyntaxError: Unexpected token 'export' - problem with tsc while importing packages around apps.
+
+so we can use esbuild / tsup instead.
+
+tsc will work fine in the backend app unless we import helper packages, so tsup / esbuild is better in this.
+
+----
 
 
