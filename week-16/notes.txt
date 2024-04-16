@@ -456,4 +456,342 @@ tsc will work fine in the backend app unless we import helper packages, so tsup 
 
 ----
 
+What is authentication?
+
+Authentication is the process of letting users signup/signin into websites via username / password or using SSO (single sign on)
+
+Authentication using jwt + localstorage
+
+Sign Up => send data to server => goes to DB and make an entry --> verification mail send to email (additional step)
+
+Sign In => send data to server => server checks for correctness of data and if the user is verified => then returns an jwt token to user for the session connection, which gets stored in browser's localstorage.
+
+Auth Requests => sends jwt token in the authorization header in the subsequent requests to the server => server decodes jwt from header and fetches requested data from DB after verification.
+
+----
+
+Authentication using cookies =>
+
+What are cookies?
+
+Cookies in web development are small pieces of data sent from a website and stored on the user's computer by the user's web browser while the user is browsing. They are designed to be a reliable mechanism for websites to remember things (very similar to local storage)
+
+    - Session Management: Cookies allow websites to identify users and track their individual session states across multiple pages or visits.
+    - Personalization: Websites use cookies to personalize content and ads. For instance, cookies might store information about a user's preferences, allowing the site to tailor content or advertisements to those interests.
+    - Tracking: Cookies can track users across websites, providing insights into browsing behavior. This information can be used for analytics purposes, to improve website functionality, or for advertising targeting.
+    - Security: Secure cookies can be used to enhance the security of a website by ensuring that the transmission of information is only done over an encrypted connection, helping to prevent unauthorized access to user data.
+
+We will be focussing on point 4
+
+Why not local storage?
+
+Cookies and LocalStorage both provide ways to store data on the client-side, but they serve different purposes and have different characteristics.
+
+    - Cookies are send with every request to the website (by the browser) (you don’t have to explicitly add a header to the fetch call)
+
+This point becomes super important in Next.js, we’ll see later why - can't do LocalStorage in Next.js because it uses server side rendering and the first request is sent by the browser itself and we can't set the jwt in authorization in header in the first ever pre-rendered request. So the server won't be able to identify you and give access. So we have to send a cookie in the first pre-rendered request. Cookies can be sent on first pre-rendered request.
+
+We can't use jwt + localstorage based authentication in server side rendered apps. Because the authorization header can not be  set in the first pre-rendered request.We have to use cookie based authentication.
+
+In Client side rendering it is not a problem. We can send the authorization header later on.
+
+Ref - https://github.com/100xdevs-cohort-2/paytm/blob/complete-solution/frontend/src/pages/SendMoney.jsx#L45
+
+    - Cookies can have an expiry attached to them
+    - Cookies can be restricted to only https and to certain domains
+ 
+You don’t need to explicitly set the cookie header in the browser. It’s automatically set by the browser in every request.
+
+On sign in server will return a cookie which will be set in the browser and sent on subsequent requests by default.
+
+-----
+
+Properties of cookies ->
+
+Types of cookies
+    - Persistent - Stay even if u close the window
+    - Session - Go away after the window closes
+    - Secure - Sent only over secure, encrypted connections (HTTPS).
+
+Properties of cookies
+    - HttpOnly - Can not be accessed by client side scripts     - can't do like localStorage.get("token") with cookies.
+    - SameSite - Ensures cookies are not send on cross origin requests
+        - Strict
+        - Lax - Only GET requests and on top level navigation - default
+        - None
+
+Ref - https://portswigger.net/web-security/csrf/bypassing-samesite-restrictions#:~:text=SameSite is a browser security,leaks%2C and some CORS exploits.
+
+Domains - You can also specify what all domains should the cookie be sent from.
+
+While using cookies, we have to be very careful to restrict domains, use the SameSite attribute to secure our website from attacks or forgery. Since cookies are sent by default any other malicious site can make a forgery request to our site and attack it.
+
+Browser ---> Server => the server won't send the jwt, it will set-cookie and the cookie will be sent on subsequent requests.
+
+On sign in we will get back the Set-Cookie response header from the server.
+
+CSRF attacks =>
+
+Cross site request forgery attacks were super common because of cookies and hence the SameSite attribute was introduced
+
+SameSite: none
+    - cookie goes from both legit and malicious website
+
+SameSite: Strict
+    - cookie goes from legit and doesn't go from malicious website
+    - But there’s a problem 
+        - If we have affiliate partners and there is a link provided there for our site, with SameSite: strict, then after clicking on that link it will redirect us to our site,even if we are logged in but we are coming from a referrer site, cookies don't go.
+    
+SameSite: Lax - By default
+    - cookie goes from legit site and cookie goes from other affiliate sites on top level navigation, Only GET requests. as long as it doesn't send POST request to change the data it allows.
+
+    - in between Strict and None => allows top level navigation -> allows cookie even if we are referred from other affiliate sites. If a different site is doing top level navigation to our site, allow cookies to go.
+
+----
+
+Example in express (Backend)=>
+
+Initialize an empty TS project
+    npm init -y
+    npx tsc --init
+
+Update rootDir and outDir
+    "rootDir": "./src"
+    "outDir": "./dist"
+
+Add required libraries
+    import express from "express";
+    import cookieParser from "cookie-parser";
+    import cors from "cors";
+    import jwt, { JwtPayload } from "jsonwebtoken";
+    import path from "path";
+
+Initialize express app, add middlewares
+    const app = express();
+    app.use(cookieParser());
+    app.use(express.json());
+    app.use(cors({
+        credentials: true,
+        origin: "http://localhost:5173"
+    }));
+
+Add a dummy signin endpoint
+    app.post("/signin", (req, res) => {
+        const email = req.body.email;
+        const password = req.body.password;
+        // do db validations, fetch id of user from db
+        const token = jwt.sign({
+            id: 1
+        }, JWT_SECRET);
+        res.cookie("token", token);
+        res.send("Logged in!");
+    });
+
+Add a protected backend route
+    app.get("/user", (req, res) => {
+        const token = req.cookies.token;
+        const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+        // Get email of the user from the database
+        res.send({
+            userId: decoded.id
+        })
+    });
+
+Add a logout route
+    app.post("/logout", (req, res) => {
+        res.cookie("token", "ads");
+        res.json({
+            message: "Logged out!"
+        })
+    });
+
+Listen on port 3000
+    app.listen(3000);
+
+Code - https://github.com/100xdevs-cohort-2/week-16-auth-1
+
+----
+Frontend in React =>
+
+Initialize an empty react project
+
+Add a signin page ->
+
+    import { useState } from "react"
+    import { BACKEND_URL } from "../config"
+    import axios from "axios"
+
+    export const Signin = () => {
+        const [username, setUsername] = useState("")
+        const [password, setPassword] = useState("")
+
+        return <div>
+            <input onChange={(e) => {
+                setUsername(e.target.value);
+            }} type="text" placeholder="username" />
+            <input onChange={(e) => {
+                setPassword(e.target.value);
+            }} type="password" placeholder="password" />
+            <button onClick={async () => {
+                await axios.post(`${BACKEND_URL}/signin`, {
+                    username,
+                    password
+                }, {
+                    withCredentials: true,
+                });
+                alert("you are logged in")
+            }}>Submit</button>
+        </div>
+    }
+
+Add a user page ->
+
+    import axios from "axios";
+    import { useEffect, useState } from "react"
+    import { BACKEND_URL } from "../config";
+
+    export const User = () => {
+        const [userData, setUserData] = useState();
+
+        useEffect(() => {
+            axios.get(`${BACKEND_URL}/user`, {
+                withCredentials: true,
+            })
+                .then(res => {
+                    setUserData(res.data);
+                })
+        }, []);
+
+        return <div>
+            You're id is {userData?.userId}
+            <br /><br />
+            <button onClick={() => {
+                axios.post(`${BACKEND_URL}/logout`, {}, {
+                    withCredentials: true,
+                })
+            }}>Logout</button>
+        </div>
+    }
+
+Add routing ->
+
+    import './App.css'
+
+    import { BrowserRouter, Route, Routes } from "react-router-dom";
+    import { Signup } from './components/Signup';
+    import { Signin } from './components/Signin';
+    import { User } from './components/User';
+
+    function App() {
+        return (
+            <BrowserRouter>
+            <Routes>
+                <Route path={"/signup"} element={<Signup />} />
+                <Route path={"/signin"} element={<Signin />} />
+                <Route path={"/user"} element={<User />} />
+            </Routes>
+            </BrowserRouter>
+        )
+    }
+
+    export default App
+
+Code - https://github.com/100xdevs-cohort-2/week-16-auth-1
+
+----
+
+Frontend from express
+
+Add an index.html file in src folder of backend ->
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Login Page</title>
+        <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    </head>
+    <body>
+
+    <input id="username" type="text" placeholder="username" />
+    <input id="password" type="password" placeholder="password" />
+    <button id="loginButton">Submit</button>
+    <button id="logoutButton">Logout</button>
+    <div id="userData"></div>
+
+
+    <script>
+
+        document.getElementById('loginButton').addEventListener('click', async () => {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                await axios.post(`/signin`, {
+                    username,
+                    password
+                });
+                alert("You are logged in");
+            } catch (error) {
+                console.error('Login failed:', error);
+                alert("Login failed");
+            }
+        });
+
+        document.getElementById('logoutButton').addEventListener('click', () => {
+            axios.post(`/logout`, {}, {
+                withCredentials: true,
+            }).then(() => {
+                console.log('Logged out successfully.');
+            }).catch(error => {
+                console.error('Logout failed:', error);
+            });
+        });
+
+        function fetchUserData() {
+            axios.get(`/user`, {
+                withCredentials: true,
+            }).then(response => {
+                const userData = response.data;
+                displayUserData(userData);
+            }).catch(error => {
+                console.error('Failed to fetch user data:', error);
+            });
+        }
+
+        function displayUserData(userData) {
+            const userDataDiv = document.getElementById('userData');
+            // Example: Assumes userData contains a 'name' and 'email'. Adapt based on your actual user data structure.
+            userDataDiv.innerHTML = `<p>Your id is: ${userData.userId}</p>`;
+        }
+        fetchUserData();
+    </script>
+
+    </body>
+    </html>
+
+Add a route that sends this html file ->
+
+    app.get("/", (req, res) => {
+        res.sendFile(path.join(__dirname, "../src/index.html"))
+    })
+
+Remove credentials from cors ->
+    app.use(cors());
+
+----
+
+
+
+
+
+
+
+
+
+
+
+
+
 
