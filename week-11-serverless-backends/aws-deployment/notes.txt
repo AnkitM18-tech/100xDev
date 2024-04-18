@@ -120,3 +120,8 @@ If we want to keep our process even after closing the connection -> inside the A
 -> We can connect to the server on the aws console rather than using git bash - by selecting the instance and clicking on connect.
 
 -> EC2 = Hotel => processes running on ports = rooms => reverse proxy = manager for urls and routes them to their respective ports(rooms). => we don't have to put the port number their explicitly it will automatically redirect.
+
+http: by default(not mentioned anything) port 80, https: by default(not mentioned anything) port 443 -> nginx runs on these ports.
+
+certificate: managed by certbot (https://certbot.eff.org)
+In this site we can give reverse proxy nginx and machine ubuntu 20, then it will give us a bunch of steps to follow to integrate ssl certificate to our app. We can buy certificates from more authorized sites or we can request one from AWS as well.
