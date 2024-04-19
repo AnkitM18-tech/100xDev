@@ -161,3 +161,9 @@ So if we know certain pages are going to be same for every user, instead of rend
 
 Dynamic Page => the page content changes / varies for user to user.
 Static Page => the page content remains the same for every user.
+
+SSG -> makes sense if the page is not changing often.(ex - Blogs Website / Dailycode Platform)
+
+// Todo: How to statically generate all pages in dailycode platform. Statically generate dynamic routes? The whole dailycode platform to be SSG.
+
+we can easily statically generate constant routes (/route_name), but not "/asdghsl-234" dynamic routes is difficult, need to research.
