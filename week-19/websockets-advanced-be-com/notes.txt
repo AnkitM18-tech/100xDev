@@ -1,0 +1,318 @@
+What is backend communication?
+
+In the real world, you have various backend systems, not just one. As our application grows, we don't want to put all our code (even sensitive stuff) in one BE system. We should distribute it to other BE services.
+
+For example, for a website like PayTM, whenever you do a transaction, the following might happen :-
+
+transaction of Rs.1000 to 9876543210 --> hits the BE 1
+
+---> then stored in DB ---> then there must be push notification queue -> push notification service BE, phone queue -> phone service BE, email queue -> email service BE
+
+For leetcode, whenever the user submits a problem, the following might happen - 
+
+Submit a problem --> hits BE 1 --> store the data in the database
+then there might be a premium users submission queue --> the code sent to big machines for processing / computation
+
+the same way there might be free users submission queue --> the code sent to small machines for processing / computation
+
+the main transaction or submission process is done, even if the queues are busy or down, still the requests are present in the queue and whenever the service gets up, those requests will be performed and the BE services let the DB know the status and end user can poll the BE and fetch the status at regular intervals. ex: RabbitMQ , Redis etc have queue implmentations
+
+If the BE failed to execute a request from the queue then it will push that task again into the queue and try after sometime. So whenever we are delegating our tasks to another services like push notification, email service or sms service, having a queue architecture makes sense, because the services can fluctuate a lot and become unreliable.
+
+Types of communication =>
+
+Synchronous (Strong coupling)
+    HTTP (REST/GraphQL) - when we send some request, we wait for an response or acknowledgment.
+    Websocket (debatable if sync or async)
+ 
+Asynchronous (Weak coupling) - when we send some data / request, we don't wait for an response or acknowledgment
+    Messaging queues
+    Pub subs (Publisher - Subscriber)
+    Server-Sent Events 
+    Websocket (debatable if sync or async)
+
+Main BE server should only be worried about the the tasks that need to be performed instantly and other async tasks and services can be offloaded to other BE server and processes. Our primary server should talk to these servers. =>Instead of a Big Monolith Server, there are microservices - small services talking to each other.
+
+
+Websockets =>
+
+websockets provide us some functionalities which are missing in HTTP protocol.
+
+WebSockets provide a way to establish a persistent, full-duplex communication channel over a single TCP connection between the client (typically a web browser) and the server.
+
+Browser --Give me SOL Price ---> Server
+--------- Persistent Connection ---------
+<------- SOL Price is xyz
+<------- SOL Price is uik
+<------- SOL Price is lio
+
+
+Use Cases for WebSockets:
+
+- Real-Time Applications: Chat applications, live sports updates, real-time gaming, and any application requiring instant updates can benefit from WebSockets.
+
+- Live Feeds: Financial tickers, news feeds, and social media updates are examples where WebSockets can be used to push live data to users.
+
+- Interactive Services: Collaborative editing tools, live customer support chat, and interactive webinars can use WebSockets to enhance user interaction
+
+Good example - https://www.binance.com/en/trade/SOL_USDT?type=spot
+
+Why not use HTTP/REST? Why do you need ws? ->
+
+- Network Handshake happens for every request
+- No way to push server side events (You can use polling but not the best approach)
+
+Browser --Give me SOL Price ---> Server
+        <------- SOL Price is xyz
+        --Give me SOL Price ---> Server
+        <------- SOL Price is uik
+        --Give me SOL Price ---> Server
+        <------- SOL Price is lio
+
+In HTTP we don't have a persistent connection. n/w handshakes happen for every request. as soon as we get the response the connection is closed. If we have to send 1000 requests , 1000 handshakes happen(not a good way to handle)
+
+Full Duplex => Browser can send data to server and vice versa over a single persistent connection. here the server can push events to the browser. If we want to send 1000 requests , it can happen over a single connection. Great Usecase => Financial Trackers, Live Feed where events occur in massive amounts.
+
+In HTTP => the server can't find the browser (send a request), but the browser can find the server.server can only return a response, can't push events on its own.
+
+Leetcode uses polling when you submit a problem. It doesn't use ws, but it would be efficient to use ws to let the primary server know about the problem status and the user can fetch it from there. Instead they use polling to fetch the status from DB.
+
+-----------------
+
+Websockets in Node.js =>
+
+There are various libraries that let you create a ws server (similar to how express lets you create an HTTP server)
+
+https://www.npmjs.com/package/websocket
+https://github.com/websockets/ws
+https://socket.io/
+ 
+We’ll be using the ws library
+Problems with socket.io - 
+
+Even though socket.io is great (it gives you constructs like rooms to make the API much cleaner), it’s harder to support multiple platforms in it (Android, IOS, Rust)
+
+There are implementations in most platforms but not very up to date 
+https://socket.io/blog/native-socket-io-and-android/
+https://github.com/1c3t3a/rust-socketio
+
+------------
+express, koa, hono => implementation of http protocol. => using these we can create http servers.
+
+like fetch, ws also by default supported by browsers. for android and rust, ios it has its implementations.
+
+---
+
+Ws in Node.js (Code)
+
+Initialize an empty Node.js project
+    npm init -y
+Add tsconfig to it
+    npx tsc --init
+Update tsconfig
+    "rootDir": "./src",
+    "outDir": "./dist",
+Install ws
+    npm i ws @types/ws
+
+
+```
+
+Code using http library =>
+
+import WebSocket, { WebSocketServer } from 'ws';
+import http from 'http';
+
+const server = http.createServer(function(request: any, response: any) {
+    console.log((new Date()) + ' Received request for ' + request.url);
+    response.end("hi there");
+});
+
+const wss = new WebSocketServer({ server });
+
+wss.on('connection', function connection(ws) {
+  ws.on('error', console.error);
+
+  ws.on('message', function message(data, isBinary) {
+    wss.clients.forEach(function each(client) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(data, { binary: isBinary });
+      }
+    });
+  });
+
+  ws.send('Hello! Message From Server!!');
+});
+
+server.listen(8080, function() {
+    console.log((new Date()) + ' Server is listening on port 8080');
+});
+
+```
+
+```
+
+Code using express =>
+
+npm install express @types/express
+ 
+import express from 'express'
+import { WebSocketServer } from 'ws'
+
+const app = express()
+const httpServer = app.listen(8080)
+
+const wss = new WebSocketServer({ server: httpServer });
+
+wss.on('connection', function connection(ws) {
+  ws.on('error', console.error);
+
+  ws.on('message', function message(data, isBinary) {
+    wss.clients.forEach(function each(client) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(data, { binary: isBinary });
+      }
+    });
+  });
+
+  ws.send('Hello! Message From Server!!');
+});
+
+```
+
+Polling -> in constant intervals client checks if the server has the response or not.
+Long Polling -> client asks the server to send response once it is available with it. it keeps on waiting and the keeps the connection open until it receives the response from server.
+
+queues => EC2 server running RabbitMQ / Redis => that let servers push to the queue and pop from the queue.
+
+Whenever we are creating a websocket server, we are actually creating a http server which gets upgraded to the websocket server.
+The first connection / the first request the browser makes is a http connection / request. It gets upgraded to a websocket connection on the server. there is actually a http server running under the hood exposed on a certain port.
+
+It's when the server gets the websocket request, it gets upgraded to the websocket full duplex connection.
+
+```
+
+Client side code =>
+
+Websocket  is a browser API that you can access (very similar to fetch)
+
+Will work in a raw project , React project and Next project (needs to be client side)
+
+Create a React project
+    - npm create vite@latest
+
+Create a websocket connection to the server
+
+```
+
+import { useEffect, useState } from 'react'
+import './App.css'
+
+function App() {
+  const [socket, setSocket] = useState<WebSocket | null>(null);
+
+  useEffect(() => {
+    const newSocket = new WebSocket('ws://localhost:8080');
+    newSocket.onopen = () => {
+      console.log('Connection established');
+      newSocket.send('Hello Server!');
+    }
+    newSocket.onmessage = (message) => {
+      console.log('Message received:', message.data);
+    }
+    setSocket(newSocket);
+    return () => newSocket.close();
+  }, [])
+
+  return (
+    <>
+      hi there
+    </>
+  )
+}
+
+export default App
+
+```
+// Can you convert it to a custom hook called useSocket ?
+
+----------
+
+Next.js ->
+
+Create a fresh next project =>
+    Update page.tsx to be a client component
+    Add the code to create a socket connection
+
+
+"use client"
+import { useEffect, useState } from 'react'
+
+export default function() {
+  const [socket, setSocket] = useState<WebSocket | null>(null);
+
+  useEffect(() => {
+    const newSocket = new WebSocket('ws://localhost:8080');
+    newSocket.onopen = () => {
+      console.log('Connection established');
+      newSocket.send('Hello Server!');
+    }
+    newSocket.onmessage = (message) => {
+      console.log('Message received:', message.data);
+    }
+    setSocket(newSocket);
+    return () => newSocket.close();
+  }, [])
+
+  return (
+    <>
+      hi there
+    </>
+  )
+}
+
+-------
+
+Scaling ws servers =>
+
+    - In the real world, you’d want more than one websocket servers (Especially as your website gets more traffic)
+
+    - The way to scale websocket servers usually happens by creating a ws fleet
+
+    - There is usually a central layer behind it that orchestrates  messages
+
+    - ws servers are kept stateless
+
+
+we scale ws horizontally.
+
+We don't need more HTTP servers to support 1Mn users as they won't be making requests that frequently.So scaling is easy in HTTP servers.
+
+But if we have to scale Websocket servers, we need to create a ws fleet and connect them to all 1Mn users, as these are persistent connections.
+
+There are benchmarks available on how much users the servers support, we can take a look and plan likewise.
+
+Horizontal Scaling (Better way) => even if there are people from diff regions of the world connected to diff Web Sockets servers according to their regions. If someone sends something, we need to broadcast the messages from the sender's server to other servers to users who have the same room id.So we can connect all servers to a pub sub, where servers can subscribe to pub subs and let users in respective rooms to publish and get the updates from each other.
+
+India --- ws1 ----|
+US ------ ws2 ----|--- Pub Sub 
+UK ------ ws3 ----|
+
+Alex from US sends "hi" to ws2 and ws2 publish it to Pub Sub, Pub Sub checks whoever has the same room id, it let those ws servers know and then the message is propagated to users connected to ws1 and ws3 who belongs to the same room id.
+
+Here if someone sends something from India who belongs to room1 and we need to propagate the updates to users connected to other websocket servers who also belong to room1. Then the ws1 can publish it to pub sub and then Pub Sub will send it to the subscribed ws2, ws3 that the message is published from room1, now ws2 and ws3 can tell users who belong to room1, connected to them.
+
+Sticky Connections => putting everyone into one room, hence connect them to a single websocket server.
+Sharding => based on your room, everyone will be connected to the same websocket server. that is one way of scaling. (Ugly way)
+
+
+India ----|
+US -------|---- ws1 ==> connections based on room => sticky conn.
+UK -------|
+
+If we have a fleet of connections, and have a restriction that users of room1 need to connect to websocket server 1, then connection becomes sticky.Most of the times there is load balancer which will take all the room1 connections to ws1 , room2 connections to ws2 and so on.
+
+In Mutiplayer games, players are connected to a server on which certain game logic is running, which decides how a certain person moves, shoots or win / lose.
+
+TimescaleDB can store time series data in the database.
+TradingView provides APIs to show graphs in trading apps.
