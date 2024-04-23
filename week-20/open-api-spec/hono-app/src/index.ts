@@ -1,6 +1,5 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { getUserRoute } from "./route";
-import { Hono } from "hono";
 import { swaggerUI } from "@hono/swagger-ui";
 
 const app = new OpenAPIHono();
