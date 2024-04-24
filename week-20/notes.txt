@@ -323,3 +323,46 @@ import { DefaultService } from "../generated";
 
 const response = await DefaultService.getUsers("1");
 ```
+
+--------
+
+OpenAPI spec file ---> Document Generation => so that everytime the endpoints change, we just have to update the openapispec file and rebuild the client and a consumer (user / ai) can understand and interact with the remote service with minimal implementation logic. we can update the openapispec file and autogenerate a client so that the consumer can use it to talk to server.
+
+why? 
+  - Making autonomous systems understand the UI 
+  - Automatic Client Generation 
+  - Exposing your backends to the world 
+
+tsoa page => https://tsoa-community.github.io/docs/getting-started.html
+
+tsoa under the hood uses express, we have added the Decorators, so tsoa kicks in and convert the verbose code into routes.ts file. Everytime we update or add routes in service file we need to run `yarn run tsoa routes` (generate express routes file) to generate `routes.ts` file again.
+
+yarn run tsc --outDir build --experimentalDecorators => to build. (ts to js files) - every time you change any file you need to rebuild again.
+
+node build/src/server.js => run backend server
+
+yarn run tsoa spec => create a spec file - swagger.json
+
+we can import it into postman and check => import -> raw text -> paste the json file content -> import
+
+Generate Swagger Page ->
+
+yarn add swagger-ui-express
+yarn add -D @types/swagger-ui-express
+
+
+to generate client =>
+
+npx openapi-typescript-codegen --input ./build/swagger.json --output node-client -c fetch
+
+npx openapi-typescript-codegen --input <path to swagger.json file> --output <destination_folder> -c <underlying library used to fetch>
+
+The consumer can just simply use the client from our Frontend to call a function to talk to the server. They don't have to worry about writing the entire logic. That part has been handled / abstracted by the client. This client has been generated from our open api spec file only.
+
+We can create multiple clients for golang, rust etc from this single file.
+
+We can also provide more description about the controller by adding comments inside the controller. /** */ -> putting comments inside this block -> then run `yarn run tsoa spec` to generate spec file. This will help AI to understand better what the controller does.
+
+The generation of node client happens on the server, we can use it anywhere on client / server.
+
+"experimentalDecorators": true -> tsconfig change so that we don't see errors while using Decorators.
