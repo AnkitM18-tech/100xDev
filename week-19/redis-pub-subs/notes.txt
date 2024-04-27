@@ -297,12 +297,71 @@ Depending upon the page we are on, we can subscribe to events and unsubscribe fr
 
 -----
 
+Pub subs =>
+
+Publish-subscribe (pub-sub) is a messaging pattern where messages are published to a topic without the knowledge of what or if any subscribers there might be. Similarly, subscribers listen for messages on topics of interest without knowing which publishers are sending them. This decoupling of publishers and subscribers allows for highly scalable and flexible communication systems.
+
+Subscribe to a topic
+    - SUBSCRIBE problems_done
+
+Publishing to a topic
+    - PUBLISH problems_done "{id: 1, ans: 'TLE'}"
 
 
+Node.js ----> publish to topic problems ----> PubSub ------> Subscriber 1 , Subscriber 2 listening for messages on topics of interest.
 
+Pub subs in Node.js
+ 
+Let’s update the worker code to publish the final submission from the worker to the redis pub sub
 
+import { createClient } from "redis";
+const client = createClient();
 
+async function processSubmission(submission: string) {
+    const { problemId, code, language } = JSON.parse(submission);
 
+    console.log(`Processing submission for problemId ${problemId}...`);
+    console.log(`Code: ${code}`);
+    console.log(`Language: ${language}`);
+    // Here you would add your actual processing logic
+
+    // Simulate processing delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    console.log(`Finished processing submission for problemId ${problemId}.`);
+    client.publish("problem_done", JSON.stringify({ problemId, status: "TLE" }));
+}
+
+async function startWorker() {
+
+    try {
+        await client.connect();
+        console.log("Worker connected to Redis.");
+
+        // Main loop
+        while (true) {
+            try {
+                const submission = await client.brPop("problems", 0);
+                // @ts-ignore
+                await processSubmission(submission.element);
+            } catch (error) {
+                console.error("Error processing submission:", error);
+                // Implement your error handling logic here. For example, you might want to push
+                // the submission back onto the queue or log the error to a file.
+            }
+        }
+    } catch (error) {
+        console.error("Failed to connect to Redis", error);
+    }
+}
+
+startWorker();
+
+Try subscribing to it from the redis-cli
+    - SUBSCRIBE problem_done
+
+Assignment ?
+    - Create a websocket server that lets users connect and accepts one message from a user which tells the websocket server the users id (no auth)
+    - Make the websocket server subscribe to the pub sub and emit back events to the relevant user 
 
 
 
