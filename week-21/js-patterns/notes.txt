@@ -1,0 +1,371 @@
+What we’re learning
+    Stateful vs Stateless Backends
+    State management in a Backend app
+    Singleton Pattern
+    Pub Subs + Singleton pattern
+
+
+Stateful vs Stateless Backends =>
+
+`Common interview question`
+
+Stateless servers =>
+    - Usually when you write HTTP servers, they don't hold any state
+    - This means, they don’t have any in memory variables that they use
+    - They usually rely on the database for state
+
+Advantages ->
+
+    - Users can connect to a random server, there is no need of stickiness
+    - Can autoscale up and down easily and simply decide where to route traffic based on CPU usage.
+
+
+Stateful servers =>
+    - A lot of times, you make servers hold state (chess moves, multiplayer game movements - we can't hit the server everytime to store, fetch and validate data)
+        - we store the data in the database as well as keep it on server for faster validation of data and certain computing scenarios
+    - Good examples of this are
+        - Creating an in memory cache - https://github.com/code100x/cms/blob/e905c71eacf9d99f68db802b24b7b3a924ae27f1/src/db/Cache.ts#L3
+        - Storing the state of a Game in case of a realtime game - https://github.com/code100x/chess/blob/main/apps/ws/src/Game.ts#L41-L47
+        - Storing a list of 10 most latest chats in memory for a chat application
+    - In case 1, there is no need of stickiness
+    - In case of 2 and 3, there is need of stickiness
+    - Stickiness
+        - Making sure that the user who is interested in a specific room, gets connected to a specific server. Even if the user gets disconnected, they should connect to the same server in order see their data on the server, and continue forward.
+
+Most realtime applications => Stateful (gaming, collaboration apps etc)
+Most e-commerce, business apps,Payment Platforms => Stateless 
+
+-------
+
+State in JS process
+
+How/where can you store state in a Javascript process
+
+This state might being used by multiple files, not just one, so the following approach might work ->
+
+putting the states and data inside a websocket server - we can do this, but there are better ways
+
+We can do better state management on the backend as well.
+
+put the state inside a store.ts central file and use it across multiple places.
+
+```
+
+index.ts - pushes to games array - updates the store file, adding games and update moves data
+
+import { games } from "./store";
+import { startLogger } from "./logger";
+
+startLogger();
+
+setInterval(() => {
+    games.push({
+        "whitePlayer": "harkirat",
+        "blackPlayer": "jaskirat",
+        moves: []
+    })
+}, 5000)
+
+
+logger.ts - uses the games array and maybe store the data in DB after certain time.
+
+import { games } from "./store";
+
+export function startLogger() {
+    setInterval(() => {
+        console.log(games);
+    }, 4000)
+}
+
+store.ts - Exports the game array
+
+interface Game {
+    whitePlayer: string;
+    blackPlayer: string;
+    moves: string[];
+}
+
+export const games: Game[] = [];
+
+```
+
+This will work, but a lot of times you need to attach functionality to state as well. 
+
+Let’s see how can we create a class called GameManager and expose some functions on it that can be called by files using it
+
+There are other ways of storing state in a TS project as well, redux being a popular one. Yes, you can use redux in the backend as well
+
+-----
+
+In the game like structure, we keep a state on server and aggressively push the moves to the DB as well, in case the server crashes / goes down, we still have the moves / game data saved somewhere and re-fetch it.
+
+In-memory we should avoid as much as possible, if there is no need we should not use it, we can use Redis instead(distributed caching, shared among different servers).
+
+Else we can avoid in-memory state management and store data in Redis completely and then delete the data when the game ends. It is also a good architecture. Here we use Redis as database. Only downside is a bit more latency, but stickiness is avoided.
+
+the user sends request to a router service (ws connection) which connects the users to a certain server. It manages the connection status of servers, usage of the servers, health of servers etc and depending on these factors it let's the user know to which server to connect to, it also maintains the server and room assignment status. That's how we maintain a fleet of servers and make sure the right connections are established.
+
+------
+
+Classes and Singleton pattern
+Let’s create a class that
+    - Stores games
+    - Exposes functions that let you mutate the state
+
+```
+interface Game {
+    id: string; 
+    whitePlayer: string;
+    blackPlayer: string;
+    moves: string[];
+}
+
+export class GameManager {
+    private games: Game[] = [];
+
+    public addGame(game: Game) {
+        this.games.push(game);
+    }
+
+    public getGames() {
+        return this.games;
+    }
+
+    // e5e7
+    public addMove(gameId: string, move: string) {
+        const game = this.games.find(game => game.id === gameId);
+        if (game) {
+            game.moves.push(move);
+        }
+    }
+
+    public logState() {
+        console.log(this.games);
+    }
+}
+```
+Bad approach
+    Create saparate instance of GameManager in every file that needs it - if we create separate instances for different files, then we can't re-initialize the same class instances for different files. and also we won't be able to share the states across different files. -> logger console.log will keep printing empty array, because we never pushed moves to this array, both class instances are different. So states are not shared.
+
+Slightly Better approach
+    Export a single instance of gameManager from GameManager.ts and use it everywhere
+
+Even better approach - Singleton Pattern
+    Completely prevent any developer from ever creating a new instance of the GameManager class
+
+Static attributes - 
+    In JavaScript, the keyword static is used in classes to declare static methods or static properties. Static methods and properties belong to the class itself, rather than to any specific instance of the class. Here’s a breakdown of what this means
+
+```
+class Example {
+    static count = 0;
+
+    constructor() {
+        Example.count++;  // Increment the static property using the class name
+    }
+}
+
+let ex1 = new Example();
+let ex2 = new Example();
+console.log(Example.count);  // Outputs: 2
+```
+
+```
+interface Game {
+    id: string;
+    whitePlayer: string;
+    blackPlayer: string;
+    moves: string[];
+}
+
+export class GameManager {
+    private static instance: GameManager; // Create a static instance of the class
+    private games: Game[] = [];
+
+    private constructor() {
+        // Private constructor ensures that a new instance cannot be created from outside
+    }
+
+    public static getInstance(): GameManager {
+        if (!GameManager.instance) {
+            GameManager.instance = new GameManager();
+        }
+        return GameManager.instance;
+    }
+    // ... other methods
+}
+
+// Usage GameManager.getInstance().addGame()
+// Try creating a new instance of the GameManager class. Notice it wont let you.
+```
+Using singleton pattern noone can even accidentally create a new instance of the class, and everytime the same instance will get exported to every place.
+
+
+---
+
+Pub Sub + Singleton =>
+
+What if You want to create a system where users can subscribe to the feed of stocks (prices)
+This application will be used by >1Mn users
+How would you build it?
+
+- Create a PubSubManager class (singleton)
+- It keeps track of what all stocks are users on this server interested in
+- It tells the pub sub whenever a new stock is added or a stock is removed from the list of interested stocks on that server
+- It relays the events to the right sockets whenever an event is received
+ 
+Users made connections to websockets randomly. websockets are subscribed to pub/subs.
+
+Users make requests to websocket servers, and servers ask pub/subs for the updates and then broadcasts the updates to the right users. If the user leaves then the server needs to tell the pub/subs that the user left and it is no longer interested in the updates.
+
+-------
+
+p1,p2 --- e4f5 --- ws1 --> publish roomId1 , move => e4e5 --> Pub/Sub 
+
+
+p3 --- ws2 ---> subscribe to events happening in roomId1 ---> Pub / Sub --> forward the published events from ws1 to ws3 and p3 will get to know the status of the game.
+
+Backend communicated with each other using pub/subs.
+
+Stock ticker => users connected to different server, but interested in the updates of the same set of stocks can subscribe to the pub/subs and when the pub/sub get updates from the stock exchange it will let the interested servers know about the updates and servers will then notify the users.
+
+----
+
+Pub Sub + Singleton (Implementation)
+
+Starting the pub sub
+- Start a pub sub (redis is a decent one)
+    - docker run -d -p 6379:6379 redis
+- Try a simple publish subscribe in two terminals
+    -  docker exec -it d1da6bcf089f /bin/bash
+    -  redis-cli
+
+Creating the PubSubManager
+Init a simple node.js project
+    npm init -y
+    npx tsc --init
+    npm install redis
+
+```
+Create the Pub Sub Manager
+
+// Import the necessary module from the 'redis' package
+import { createClient, RedisClientType } from 'redis';
+
+export class PubSubManager {
+    private static instance: PubSubManager;
+    private redisClient: RedisClientType;
+    private subscriptions: Map<string, string[]>;
+
+    // Private constructor to prevent direct construction calls with the `new` operator
+    private constructor() {
+        // Create a Redis client and connect to the Redis server
+        this.redisClient = createClient();
+        this.redisClient.connect();
+        this.subscriptions = new Map();
+    }
+
+    // The static method that controls the access to the singleton instance
+    public static getInstance(): PubSubManager {
+        if (!PubSubManager.instance) {
+            PubSubManager.instance = new PubSubManager();
+        }
+        return PubSubManager.instance;
+    }
+
+    public userSubscribe(userId: string, stock: string) {
+        if (!this.subscriptions.has(stock)) {
+            this.subscriptions.set(stock, []);
+        }
+        this.subscriptions.get(stock)?.push(userId);
+        
+        if (this.subscriptions.get(stock)?.length === 1) {
+            this.redisClient.subscribe(stock, (message) => {
+                this.handleMessage(stock, message);
+            });
+            console.log(`Subscribed to Redis channel: ${stock}`);
+        }
+    }
+
+
+    public userUnSubscribe(userId: string, stock: string) {
+        this.subscriptions.set(stock, this.subscriptions.get(stock)?.filter((sub) => sub !== userId) || []);
+
+        if (this.subscriptions.get(stock)?.length === 0) {
+            this.redisClient.unsubscribe(stock);
+            console.log(`UnSubscribed to Redis channel: ${stock}`);
+        }
+    }
+
+    // Define the method that will be called when a message is published to the subscribed channel
+    private handleMessage(stock: string, message: string) {
+        console.log(`Message received on channel ${stock}: ${message}`);
+        this.subscriptions.get(stock)?.forEach((sub) => {
+            console.log(`Sending message to user: ${sub}`);
+        });
+    }
+
+    // Cleanup on instance destruction
+    public async disconnect() {
+        await this.redisClient.quit();
+    }
+}
+
+
+Create a simple index.ts file to simulate users
+
+import { PubSubManager } from "./PubSubManager";
+
+setInterval(() => {
+    PubSubManager.getInstance().userSubscribe(Math.random().toString(), "APPL");
+}, 5000)
+
+
+```
+
+In stateful servers, instead of pushing data directly to DB, we can put it in a redis queue and send all bulk data to the DB.
+
+Since there will be more than one router service in a large scale application, they need to share states somehow, so they can't have individual states, instead they can share states via a DB or redis.
+
+Another usecase for singleton pattern is => when we want to minimize the number of connections to a DB , so that we don't run out of the maximum number of connections or restrict access to certain services.
+
+Pub subs =>
+
+Publish-subscribe (pub-sub) is a messaging pattern where messages are published to a topic without the knowledge of what or if any subscribers there might be. Similarly, subscribers listen for messages on topics of interest without knowing which publishers are sending them. This decoupling of publishers and subscribers allows for highly scalable and flexible communication systems.
+
+Subscribe to a topic
+    - SUBSCRIBE problems_done
+
+Publishing to a topic
+    - PUBLISH problems_done "{id: 1, ans: 'TLE'}"
+
+
+Node.js ----> publish to topic problems ----> PubSub ------> Subscriber 1 , Subscriber 2 listening for messages on topics of interest.
+
+
+Another common pattern is =>
+
+Strategy Pattern ->
+
+class Payment {
+    switchStrategy() {
+
+    }
+}
+
+e.g:- Suppose we have 3 payment supports
+
+Razorpay
+PayTM
+Stripe
+
+We can poll the services for their status, if any of them is unavailable, then we can stop accepting the payment via that channel and use other channels for the time being.
+
+If Razorpay went down, then we can switchStrategy() to PayTM or Stripe and accept payments via that gateway. All we have to do is change the strategy and all API calls will now be redirected to other gateways according to their status.
+
+
+
+
+
+
+
