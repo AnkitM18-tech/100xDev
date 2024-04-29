@@ -1,0 +1,281 @@
+What we’re discussing =>
+
+Server
+    Cluster module and vertical scaling ✅
+    Capacity Estimation, ASGs and horizontal scaling ✅
+    Load balancers ✅
+Database
+    Indexing ✅
+    Normalization
+    Sharding
+
+-------------------------------
+
+Vertical scaling =>
+
+Vertical scaling means increasing the size of your machine to support more load (increasing memory, RAM, cpu cores etc) -- t2.micro -> c5large -> c5.metal (AWS instance sizes)
+
+In single threaded languages, if we vertically scale then the scaling issue regarding memory might be solved, but for processing requests etc can't be solved. Even though the machine has many CPUs, single threaded processes can't really utilize it fully. Only a single CPU will get used, all other CPUs will be idle. There could be some improvements here and there but not significant.
+
+Single threaded languages =>
+
+if our machine has 6 cores, then single threaded languages will only use 1 single core and other 5 cores will still be idle.
+
+doesn't matter how much load it is getting, what optimisations we have done, it will only be able to handled by a single CPU, because it is single threaded. We can't parallelize tasks. One task at a time.
+
+So vertical scaling is not very helpful in single threaded languages after a certain extent. It will give the same performance in a regular machine === beefy machine.
+
+node index.js --> 1 core occupied, 5 idle cores
+
+Multi threaded languages =>
+
+if our machine has 6 cores, then multi threaded languages will utilise each core using threads / subroutines.
+
+vertical scaling is helpful in multi threaded languages, as they can parallelize tasks and make use of threads to increase performance drastically. They can fully utilize the number of cores available in the machine.
+
+But we have to progamatically optimize the code, use threads, subroutines to achieve it.
+
+go/java/rust --> 6 cores occupied
+
+----------------------------------
+
+Node.js ->
+
+Let’s run an infinite loop in a JS project and see how our CPU is used
+
+let c = 0;
+while (1) {
+  c++;
+}
+
+If we run this program 3 times, then we will be able to see the node processes utilizing nearly 100% usage in all 3.
+
+This confirms that only a single core of the machine is being used. We got 3 different processes using 100% CPU each.
+
+--------------------------------------
+
+Rust ->
+
+use std::thread;
+
+fn main() {
+    // Spawn three threads
+    for _ in 0..3 {
+        thread::spawn(|| {
+            let mut counter: f64 = 0.00;
+            loop {
+                counter += 0.001;
+            }
+        });
+    }
+
+    loop {
+        // Main thread does nothing but keep the program alive
+    }
+}
+
+The above code will use threads to parallelize the process and we can observe the CPU usage is ~= 400%, which is great as the program can make use of available CPU resources.
+
+-------------------------------------
+
+It is harder to vertically scale single threaded language projects.
+
+Implementing vertical scaling in Node.js project
+    - You can start multiple node projects then? If there are 8 cores, then just start 8 projects?
+
+    This, ofcourse has a lot of problems
+        - Just ugly to do this, keep track of the processes that are up and down
+        - Processes will have port conflicts, you’ll have to run each process on a saparate port
+
+This is where the cluster module comes into the picture
+
+```
+import express from "express";
+import cluster from "cluster";
+import os from "os";
+
+const totalCPUs = os.cpus().length;
+
+const port = 3000;
+
+if (cluster.isPrimary) {
+  console.log(`Number of CPUs is ${totalCPUs}`);
+  console.log(`Primary ${process.pid} is running`);
+
+  // Fork workers.
+  for (let i = 0; i < totalCPUs; i++) {
+    cluster.fork();
+  }
+
+  cluster.on("exit", (worker, code, signal) => {
+    console.log(`worker ${worker.process.pid} died`);
+    console.log("Let's fork another worker!");
+    cluster.fork();
+  });
+} else {
+  const app = express();
+  console.log(`Worker ${process.pid} started`);
+
+  app.get("/", (req, res) => {
+    res.send("Hello World!");
+  });
+
+  app.get("/api/:n", function (req, res) {
+    let n = parseInt(req.params.n);
+    let count = 0;
+
+    if (n > 5000000000) n = 5000000000;
+
+    for (let i = 0; i <= n; i++) {
+      count += i;
+    }
+
+    res.send(`Final count is ${count} ${process.pid}`);
+  });
+
+  app.listen(port, () => {
+    console.log(`App listening on port ${port}`);
+  });
+}
+```
+Notice different pids in different devices
+
+`**Try to figure out why there is stickiness in the browser. Why the request from the same browser goes to the same pid**`
+
+---------------
+
+Capacity estimation
+This is a common system design interview where they’ll ask you 
+- how would you scale your server
+- how do you handle spikes
+- How can you support a certain SLA given some traffic
+ 
+Answer usually requires a bunch of 
+- paper math
+- Estimating requests/s
+- Assuming / monitoring how many requests a single machine can handle
+- Autoscaling machines based on the load that is estimated from time to time
+
+----------------------
+
+In node.js when we run the process in 3 different terminals, we can see in the CPU usage that 3 different processes consume 100% of the CPU, not a single process utilising 300% resources. i.e it is not able to utilise the available resources(cores) in the machine.
+
+But In rust, when we spawn threads, and run the same proces, we can see in the CPU usage that a single process consumes 400% of the CPU - spawn 3 threads(to run the process) and the main thread(keep the program alive), i.e it is able to utilise the available resources(cores) in the machine.
+
+
+cluster module => cleaner way to start multiple processes in node.
+nodejs worker threads => start threads in node.js
+
+------
+
+Forking means we are starting other node js processes from a primary process, which won't cause port conflicts.
+
+cluster.isPrimary() -> true for only the Primary process which is invoked by the User, for all other forked processes cluster.isPrimary() is false.
+
+-------
+
+We should avoid node js for CPU intensive applications.
+Node JS is ideal for building I/O - intensive applications. where a lot of tasks can be offloaded. (async ops etc)
+
+-------
+
+SLA - Service Level Agreement
+
+Capacity Estimation =>
+
+IPL -> twice a year
+SLA -> 99.9%
+Downtime -> 30 minutes
+
+our logic to handle the spike and scale will have to check in certain intervals to meet the SLA.
+
+
+PayTM App ->
+Metric -> requests/sec
+
+Aggregation Service <== Aggregate Requests/sec <== from AWS Machines / GCP / Azure machines that are receiving requests from the user
+
+The Aggregation Service then send the data to some DB / process which will then handle the logic (analyze the load) whether or not to scale up/down => and tell the autoscaling group to scale up/down.
+
+Chess App ->
+Realtime Application -> No of Persistent Connections
+
+Persistent Connections to the Machines => send the data to Aggregation service => aggregates no of active people -> shows up on the website (80k Playing now) =>
+sends the data to a process which will analyze the load and tell the autoscaling group to scale up/down.
+
+Another challenge here is to migrate the Persistent Connections from one server to another server, in case the server is diconnected / dead or we need to balance the load by migrating users to the new server. This thing happens when we have websocket connections. When a server dies it ends all the Persistent connections with it, so we need to reinitiate all the Persistent Connections in a new server.
+
+-----
+
+Crude way =>
+
+ASG - Auto Scaling Groups -> avg CPU usage / avg Bandwidth utilisation is > 50% => scale up the number of servers (like this we can handle the traffic) to decrease the CPU usage.
+
+---------
+
+Video Transcoders / Replit like site / Similar use case =>
+
+Video Transcoders => one mp4 file we give => it transcodes it into different qualities - 360p, 720p, 1080p etc => very expensive operation => takes a long time and we need a lot of computation power (RAM. CPUs, Memory etc) even if we have a small chunk of users at a time.
+
+one solution is => we have to keep a warm pool ready for users, and as the user count increases we keep on initializing and increasing the warm pool (more machines) ready to pick up the tasks.
+
+SLA ->20 machines ready => peak u will only get 20 uploads / 1 minute. => if it is more than that I might not be able to handle this. So we are matching the SLA criteria by keeping at least 20 machines ready at all time.
+
+problems with this architecture -> we have to keep a warm pool ready at all times and we have to pay for that even if they are idle.
+another thing is that resource sharing becomes a problem later on as the user count increases and if there are usused resources sitting idle.
+
+1080p - 1080p takes 100% CPU, but 1080p -> 360p won't take 100% CPU. so it would be nice if we can share the idle CPU.
+
+e.g - It would be great if we have 20 CPUs and we can share it across 30 videos. so in this way the compute could have been shared.
+
+Other Solution Approach =>
+
+We have a queue, to which tasks are getting pushed. We have workers which can asynchronously pick up one task at a time, and when the queue length becomes very big, then we can increase the number of workers slowly and scale up our servers accordingly. when the queue length becomes less we can scale down slowly.
+
+
+Problem with this Architecture ->
+
+this works for video transcoders, which takes a lot of CPU usage and time to process.
+
+this is not the case for replit => they can not use this queue based architecture as they can't predict the concurrent number of users spik and this is slow and will take a long time to allocate resources to a user.
+
+what they can do is, they can maintain a warm pool for a certain number of users. or they can maintain a kubernetes kind of architecture. (discussed in youtube video of replit)
+
+
+------
+
+Cricket Match streaming ->
+
+Mumbai server => RTMP video sent to Data Centers => where it gets transcoded to hls (better and efficient format used for streaming platforms) and transcode it to different qualities (360,720,1080) -> easy bit => then sending to so many people across the globe is the hard bit to scale => solution to this is ASG (Auto Scaling Groups)
+
+
+Horizontally Scaling => increase the number of servers to handle the load => we have a Load Balancer which will receive and redirect/forward the requests load to different servers according to their usage metrics.
+
+In case of single threaded languages => horizontally scaling is good. We can vertically scale if the server uses rust/golang/java which can use the entire processing power using threads. We can use cluster modules in Node Js to vertically scale. It depends upon the use case and scenario.
+
+cluster modules they do the same thing (creates a new process) as running multiple processes from different terminals(node index.js), but the thing cluster module provides you is all incoming requests can be handled by a single port which was a problem back then.
+
+Master Process => Within the Node.js process, the cluster module creates a master process. The master process is responsible for creating and managing the worker processes.
+
+Worker Process => The master process forks multiple worker processes using the fork method. Each worker process is an independent instance of your node.js application, running in a separate process with its own event loop and memory space.
+
+Distributing Connections => When a client connects to your Node.js server, the connection is received by its master process. The master process then distributes the connection to one of available worker processes.
+
+Suppose when the endpoint is hit, the connection is assigned to a worker process. As long as the connection remains open, the subsequent requests (like refreshing the page) were handled by the same process, resulting in same pid.
+
+After a certain amount of time (usually 10-15 seconds) the browser closes the connection due to inactivity (could be the Keep Alive Header), casuing a new connection to be established. This new connection is then assigned to a new worker process,so we get different pid this time.
+
+The new connection follows round-robin distribution.
+forking in node.js cluster is similar to forking in c++.
+
+
+
+
+
+
+
+
+
+
+
+
