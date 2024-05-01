@@ -1,0 +1,334 @@
+Horizontal Scaling is more popular. There is a certain limit upto which we can vertically scale, after that we have to scale horizontally.
+
+vertically -> moving from t2.micro -> t2.medium -> t2.large -> t2.xlarge => increasing the size of the machine.
+
+horizontally -> adding more servers and load balancer to handle the incoming requests.
+
+If we have only one big server, then there is chance it might goes down and then we don't have any backup options. So it makes sense to horizontally scale to reduce the point of errors.
+
+ASG => Auto Scaling Groups are a way to scale horizontally.(AWS construct)
+
+Easiest way to scale is => 
+
+scale up or down depending upon the ->
+    - directly proportional to Incoming Bandwidth / Incoming Requests Count / Avg CPU usage of your cluster
+
+There are caps on number of requests, websocket connections depending upon the scenario.
+
+Adhoc-Metric => We scale according to our own metrics.
+
+Incoming Bandwidth / Incoming Requests Count / Avg CPU usage of your cluster - these are provided by cloud providers by default.
+
+There are a bunch of ways to auto-scale.
+The better way to auto-scale is using Containers.
+There is a machine and we start containers inside it as more and more load comes in. Containers are lightweight
+and easier to start as compared to creating and starting multiple EC2 instances/machines.
+
+Raw way to autoscale => creating instances.
+Better approach to autoscale using Containers.
+
+
+-----------
+
+Horizontal scaling =>
+
+Horizontal scaling represents increasing the number of instances you have based on a metric to be able to support more load.
+
+AWS has the concept of Auto scaling groups, which as the name suggests lets you autoscale the number of machines based on certain metrics.
+
+Buzz words ->
+
+Images (AMI) - Snapshots of a machine from which you can create more machines
+    - doesn't contain all information about the machine (RAM, CPU cores, exposed ports etc)
+    - we need to mention the security group, memory , RAM, Ports etc while starting the instance.
+
+Load balancer - An entrypoint that your users send requests to that forwards it to one of many machines (or more specifically, to a target group). Its a fully managed service which means you don’t have to worry about scaling it ever. AWS takes care of making it highly available.
+
+Target groups - A group of EC2 instances that a load balancer can send requests to
+    - all instances are tagged to a target group(let's say t1) to which the load balancer can send requests to when a user hits the website.
+
+Launch template - A template that can be used to start new machines
+    - contains Image, Security Group, Keypair to login to the machine, starter code -> pm2 start index.js
+
+* Please make sure you get rid of all your resources after this. *
+
+There are two ways you can use ASGs =>
+
+- Create a EC2 instance.
+    - install Node.js on it https://www.digitalocean.com/community/tutorials/how-to-install-node-js-on-ubuntu-20-04
+    - Clone the repo - https://github.com/100xdevs-cohort-2/week-22
+- Create an AMI with your machine
+- Create security group
+- Launch template
+    Ref for User data - https://stackoverflow.com/questions/15904095/how-to-check-whether-my-user-data-passing-to-ec2-instance-is-working
+
+```
+
+#!/bin/bash 
+export PATH=$PATH:/home/ubuntu/.nvm/versions/node/v22.0.0/bin/
+echo "hi there before"
+echo "hi there after"
+npm install -g pm2
+cd /home/ubuntu/week-22
+pm2 start index.js
+pm2 save
+pm2 startup
+
+```
+ASG =>
+    - Callout on availability zones - ASGs try to balance instances in each zone
+Load balancer =>
+    - Add an HTTPS Listener from your domain, request a certificate from ACM
+Target group - Attach the target group to the ASG
+
+Autoscaling part
+    - You can create an dynamic scaling policy
+
+Try playing with the Min and max on the ASG
+Try killing servers
+    - Try to stop a few servers in the ASG. Notice they spin back up to arrive at the desired amount.
+
+Simulate a scale up
+    - Try running an infinite for loop on the instance to see if a scale up happens
+
+let c = 0;
+
+while (1) {
+	c++;
+}
+
+You’ll notice the desired capacity goes up by one in some time
+Try turning the infinite loop off and notice a scale down happens
+
+
+create an EC2 instance =>
+    - Provide name and select ubuntu
+    - select instance type
+    - create keypair and change its permissions using chmod 700 <name_of_file.pem>
+    - you can config your network settings by creating a security group or you can eventually do it when we create our Auto Scaling group which will override this settings.
+    - Config Storage
+    - Launch Instance
+
+after the instance is initialized and up and running =>
+    - ssh into the instance => ssh -i <pem_file.pem> ubuntu@<public_ip>
+    - install nvm using surl -o- https://----/install.sh | bash
+    - then copy and paste the export command given to set the path.
+    - exit from the terminal and re-ssh
+    - nvm install node - install latest version of node
+    - clone the repository into the instance - https://github.com/100xdevs-cohort-2/week-22
+    - cd into repository -> npm install -> npm run start -> to check if it works
+    - go to security group and edit inbound rule to add port 3000
+
+select the instance =>
+    - actions
+    - Images and templates -> create image -- It will create a snapshot of the instance at the current point. (the folder structure, installations and everything)
+    - Give the image a name, instance volume config if you want to increase or decrease the volume, do other selections as per requirement.
+    - create image -- AMI will take some time to be created.
+
+creating security group ->
+    - click on security group from sidebar under network and security
+    - create a new security group -- give it a name -- description
+    - add inbound rules (custom TCP - 3000 and 22 port) -- so that the final machines that are getting created , we can ssh into them and see what is happening.
+    - port 22 to ssh into the machine, port 3000 we can make it more restrictive and only keep it open for the Load Balancer.
+    - create security group
+
+This security group will be attached to my auto scaling group later on.
+
+
+Auto Scaling Groups require a base image, when we scale up and new instances are created, what will they have and how will they work.
+
+else we can just create a ubuntu instance and in our starter script we can mention what things we need our instances to have -> starter script =>
+    - install node -> git clone repo -> npm install -> npm run start
+By doing this we don't need to create our own custom image. Any approach is fine.
+
+But if we follow the custom image option => then our starter code will be small -> git pull -> npm run start
+
+Launch Templates -> 
+    - when we go to images and click on launch instance it will ask us a bunch of things to add -> instance type, keypair, config storage, security group etc, we can't specify all these things in an image -> by creating a launch template we can avoid these steps.
+
+In a Launch Template we can specify all these things, so we don't have to specify again and again while launching the Image instance.
+
+- give the launch template a name
+- Application and OS Images - My Images - choose your created custom image
+- choose instance type here (everytime new instance is launched it will be of this selected type) else you can specify at the time of starting the machine in ASGs.
+- select keypair name
+- select existing security group or create a new one
+- Storage selection according to your need
+- Advanced -> User Data -> Here we have to mention what code runs when the machine starts.
+
+```
+base template for this project
+we have to write it in a certain way to be able to start our project.
+
+paste in User Data in Advanced Section
+
+#!/bin/bash 
+export PATH=$PATH:/home/ubuntu/.nvm/versions/node/v22.0.0/bin/
+
+-----
+-- ignore -- debugging purpose
+echo "hi there before"
+echo "hi there after"
+-----
+
+npm install -g pm2
+cd /home/ubuntu/week-22
+/*
+If we have some new code added
+git pull origin
+npm install
+*/
+pm2 start index.js
+
+-----
+pm2 save
+pm2 startup
+------
+
+```
+
+- create launch template
+
+
+port 22 is open by default we can ssh into the machine if only we have the correct password for it, whatever else we are starting from our side.
+
+pm2 is a process manager, even though we close our session, it will keep the process running in the background.
+
+port 22 is listening for ssh connections by default. we get it at the start of our machine.
+
+created an EC2 instance => created an image => created a security group => created a Launch Template (attached the security group, attached the image, and provided the user data (code that will run when the machine starts)) => From this created template we can start other instances
+
+After the creation of the launch template, it will show us options to launch an instance / create an ASG from our template.
+
+- create auto scaling group
+    - give the asg a name
+    - select the launch template
+    - give it default version - as our application changes - we need to update the image and launch template , for that the version we need to update.
+    - we can modify the launch template by going to the Instances -> Launch templates -> Select your launch template -> Actions -> When we modify the launch template a different version gets created.
+    - Choose Instance Type requirements => whether specify instance attributes or manually add instance types.
+    - Instance purchase options => on-demand / spot -> on-demand are slightly expensive but availability is high, spot are cheaper but unreliable.
+    - Allocation strategies -> prioritized / lowest price
+    - Network => select availability zones and subnets here. if we select multiple availability zones then ASG will terminate and create instances and try to move instances to other zones, for certain scenarios we don't want that to happen, so it's better to stick to a single availability zone.
+    - click on Next
+
+    - Load Balancing -> 
+        - there are scenarios where we don't want a load balancer => video transcoder use case, where we don't need to expose any service to the internet.
+        but in our case, an HTTP server needs a load balancer.
+    - attach to a new load balancer => then select Application LB(HTTP/HTTPS) or Network LB(TCP/UDP/TLS)
+    - then select load balancer scheme => internal or internet facing => we need to choose internet facing
+    - Listeners and Routing -> by default 80 port is open and we have to add a target group to this, so that the LB can send the traffic to the target group instances. When ASG starts we have to tag the instances to this target group as well.
+        - so we can select an existing target group or create a new target group.
+        - ASG knows that you have given a target group, so it will attach the created instances to that target group.
+    - we can leave health checks and additional settings as it is.
+    
+    - Configure group size and scaling =>
+        - Desired Capacity
+        - Scaling - min desired capacity / max desired capacity
+        - Automatic Scaling => No scaling policies / Target tracking policy.
+
+    - Add notifications and tags if you want.
+    - Review and create ASG.
+
+    - we can increase or decrease the number of instances (desired capacity) as we please.
+
+- In load balancer, a new security group is created, now set the inbound rules there as well port 80 and 443 for HTTP / HTTPS requests.
+
+- If target group is not working as expected then create a new target group and attach it in the above mentioned step. Map the ports correctly before tagging.(port in which the app is listening)
+- After that change the load balancer target group as well. We can add multiple target groups to a load balancer and ention the weightage / percentage in the load balancer section.
+
+- In the previous steps in Launch Template we created a LB which pointed to a target group but didn't specify the port correctly which is 3000, so our target group was unable to check the health of the instances coz of the wrong port which is 80 by default. Be careful in this step.
+
+Scaling via a Node.js app =>
+Create a new user with permissions to AutoscalingFullAccess
+
+```
+
+import AWS from 'aws-sdk';
+
+AWS.config.update({
+  region: 'ap-south-1',
+  accessKeyId: 'YOUR_ACCESS_KEY',
+  secretAccessKey: 'YOUR_ACCESS_SECRET'
+});
+
+// Create an Auto Scaling client
+const autoscaling = new AWS.AutoScaling();
+
+// Function to update the desired capacity of an Auto Scaling group
+const updateDesiredCapacity = (autoScalingGroupName: string, desiredCapacity: number) => {
+  const params = {
+    AutoScalingGroupName: autoScalingGroupName,
+    DesiredCapacity: desiredCapacity
+  };
+
+  autoscaling.setDesiredCapacity(params, (err, data) => {
+    if (err) {
+      console.log("Error", err);
+    } else {
+      console.log("Success", data);
+    }
+  });
+};
+
+// Example usage
+const groupName = 'node-app-1'; // Set your Auto Scaling group name
+const newDesiredCapacity = 3; // Set the new desired capacity
+
+// Call the function
+updateDesiredCapacity(groupName, newDesiredCapacity);
+
+```
+
+Cleanup =>
+Please delete all things one by one
+    ASG
+    Target group
+    Load balancer
+    Launch template
+    Image
+    Instance that the image was created from
+
+Try using elastic beanstalk. Gives you the same benefits w/o the developer having to create all of these 
+
+to point the load balancer to your own domain name =>
+    - load balancers -> click on the load balancer -> Add listener on port 443 HTTPS -> routing action forward to target group -> then select the target group -> to add certificate -->
+
+    Secure listener settings ->
+        certificate source -> FROM ACM (can select any option) -> request new ACM certificate
+
+        request a public certificate => enter the domain name -> select validation method ->
+        key algorithm (anything) => request
+
+        Then we need to make the domain entries given in domains section of the certificate to the DNS provider to validate the certificate request. Now the certificate will be issued.
+
+Now we have to go to the DNS provider and in DNS section we have to create a new record and provide the name and values. Now we can go that url and see that it is running perfectly.
+
+In ASG -> Auto Scaling section we can give policies according to that scaling will occur.
+
+create a new dynamic scaling policy =>
+    - policy type and name
+    - give a metric type
+    then create.
+
+to create a user with AutoscalingFullAccess -> 
+    - click on user dropdown -> security credentials
+    - if the user account creds gets compromised then only your ASG gets compromised.
+    - click on users -> create user -> only add AutoscalingFullAccess permissions to the user
+    - then go to security credentials tab and create access key
+
+if we are ever changing the port in our code, then we have to change the port in our target group as well.Since the instances in target group are listening on the same port we mentioned in our code.
+
+AMI instance needs to be created only once if we have git pull in our User Data, else we will need to create a new instance everytime our code changes.
+
+elasticbeanstalk -> we just have to create an application here and give it our code, everything else your Image, ASG, LB , Launch Template it will take care of it.
+
+In LB, we can select the "Resource Map" tab to see the flow of requests.
+
+
+
+
+
+
+
+
+
