@@ -40,23 +40,47 @@ Merchant login
     - Merchant gets money offramped to bank every 2 days
 
 
+Architecture =>
 
+Next.js -> PayTM FE and PayTM BE (where we will get the traffic and auto sclale it up and down)
+webhook -> another BE that should be highly available (webhook backend where the bank sends confirmation of the transactions) - will have multiple endpoints exposed for multiple banks
+Database -> stores Users, Balances, Transfers
 
+Frontend (from FE the user can spoof a request to BE that the payment has been made) and BEs are highly unreliable, so the confirmation must come from the bank server to a webhook which is highly available and reliable and from webhook we can get the confirmation and show it on the frontend.
 
+Common Architecture => while talking to bank servers
 
+When we integrate external services, (Razorpay, Stripe) and we make transactions. then the external service server hits the BE server(webhook) and register and adds a purchase in the DB. Nothing happens on the frontend.
 
+webhook service / bank api service => bank servers wil hit their API and ther job is to put the transactions into the DBs.
 
+Now the banks will settle down the transaction amount among themselves. the APIs will let each other know that the transaction is successful or not.
 
+We can't anticipate traffic on our Main BE server, so it is a better approach to keep the main server and webhook server separate, and so that if at high traffic our main backend goes down, the webhook server will still be highly available to talk to the bank servers.
 
+If we are trying to hit the bank's server directly which are not so highly reliable (can go down anytime or heavy traffic), then if the user is trying to send money back to the user's bank from the wallet and it went through then we can debit the amount and send acknowledgment to bank server to credit the amount else if it doesn't respond back within a timeframe then we can assume it failed, then we are showing the error message to the user and tell them to try again - this is one approach.
 
+Likewise for a better user experience, the requests for withdrawal of money, that we will have to create a withdrawal service and keep a queue for the withdrawal requests and the service will pick the requests and try to hit the bank server 
+if bank acknowledges(good to go) then it will debit the amount, else it will put it in the queue and retry again.
 
+ideally a withdrawal service should go from a queue sequentially to ensure that only one request is processed at a time. and the service which will pick the requests, have to make sure no other service is picking up the same request and perform it twice. we should never parallely process the withdrawal requests for a same user. It has to be a safe path and the process has to be processed in sequence to avoid any mistakes.
 
+Hot paths => have to be very cautious
+    Send money to someone
+    Withdraw balance of merchant
+    Withdraw balance of user back to bank
+    Webhooks from banks to transfer in money
+ 
+This is ~1 month job for a 2 engineer team. 
+We can cut scope in either =>
+    UI
+    Number of features we support (remove merchant altogether)
+    Number of services we need (merge bank server, do withdrawals directly and not in a queue assuming banks are always up)
 
-
-
-
-
-
-
-
-
+Stack =>
+    Frontend and Backend - Next.js (or Backend)
+    Express - Auxilary backends
+    Turborepo
+    Postgres Database
+    Prisma ORM
+    Tailwind
