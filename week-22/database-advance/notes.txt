@@ -1,0 +1,331 @@
+Indexing in Postgres =>
+
+We’ve created postgres tables many times now. Let’s see how/if indexing helps us speed up queries
+
+Create a postgres DB locally (dont use neon, we have a lot of data to store, will be very slow)
+    - docker run  -p 5432:5432 -e POSTGRES_PASSWORD=mysecretpassword -d postgres
+
+Connect to it and create some dummy data in it
+    - docker exec -it container_id /bin/bash
+    psql -U postgres
+
+Create the schema for a simple medium like app =>
+
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    name VARCHAR(255)
+);
+CREATE TABLE posts (
+    post_id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    image VARCHAR(255),
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+Insert some dummy data in =>
+
+DO $$
+DECLARE
+    returned_user_id INT;
+BEGIN
+    -- Insert 5 users
+    FOR i IN 1..5 LOOP
+        INSERT INTO users (email, password, name) VALUES
+        ('user'||i||'@example.com', 'pass'||i, 'User '||i)
+        RETURNING user_id INTO returned_user_id;
+
+        FOR j IN 1..500000 LOOP
+            INSERT INTO posts (user_id, title, description)
+            VALUES (returned_user_id, 'Title '||j, 'Description for post '||j);
+        END LOOP;
+    END LOOP;
+END $$;
+
+Try running a query to get all the posts of a user and log the time it took =>
+
+ EXPLAIN ANALYSE SELECT * FROM posts WHERE user_id=1 LIMIT 5;
+
+*Focus on the execution time*
+
+Add an index to user_id
+CREATE INDEX idx_user_id ON posts (user_id);
+
+Notice the execution time now. 
+What do you think happened that caused the query time to go down by so much?
+
+How indexing works (briefly)
+When you create an index on a field, a new data structure (usually B-tree) is created that stores the mapping from the index column to the location of the record in the original table. 
+Search on the index is usually log(n) 
+
+The data pointer (in case of postgres) is the page and offset at which this record can be found. 
+Think of the index as the appendix of a book and the location as the page + offset of where this data can be found
+
+----------------
+
+Complex indexes =>
+
+You can have index on more than one column for more complex queries
+
+For example, 
+
+Give me all the posts of a user with given id with title “Class 1”.
+
+The index needs to have two keys now
+
+CREATE INDEX idx_posts_user_id_title ON posts (description, title);
+
+Try searching before the index is added and after it is added
+ SELECT * FROM posts WHERE title='title' AND description='my title';
+
+--------------------
+
+Indexes in Prisma =>
+
+Ref - https://www.prisma.io/docs/orm/prisma-schema/data-model/indexes
+You can add an index to a model in prisma by doing the following - 
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  email     String   @unique
+  posts     Post[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Post {
+  id          String   @id @default(uuid())
+  title       String
+  content     String?
+  published   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+ 
+
+Let’s look at daily code and see where all can we introduce an index -
+
+https://github.com/code100x/daily-code/blob/main/packages/db/prisma/schema.prisma#L129
+
+-------------------
+
+SELECT * FROM Users WHERE user_id=1 => postgres will make optimizations while searching the table for the record.
+
+Postgres is already doing optimizations, what can we do on top of it.
+
+Without indexing, postgres will have to do an entire scan of the DB.
+With Indexing we store the mapping from the index column to the location of the record in the original table & we can actually tell the DB that a certain entry is here which makes it faster.
+
+The data pointer (in case of postgres) is the page and offset at which this record can be found. 
+Think of the index as the appendix of a book and the location as the page + offset of where this data can be found
+
+posts_index data structure =>
+
+index_column(the column on which we created an index) - location in the original table.(1,2,3..... 1000,.....10000000)
+
+This new index data structure(B-Tree) stores the location of the records in a systematic way (sorted order) - in this case the user id and corresponding posts details , so we don't have to do a whole scan, we can just binary scan it.
+
+If we add another user then that entry will be put inside the index data structure as well. B-Tree does Query and Insertion in log(n)
+
+Think of it as caching the mapping in someplace else which will help us later on.
+
+Always look at your query constraints and then create a index based on it.
+
+----------------------------------
+
+Normalization
+- the process of removing redundancy in DB.
+
+Redundancy - redundant data means data that already exists elsewhere and we are duplicating it in two places.
+
+e.g :-
+ if we have 2 tables,
+    - users and orders
+
+users table columns -> id | username | password | name
+orders table columns -> id | user_id | name | amount
+
+if you notice, we have stored the name on the order in the Orders table, when it is already present in the Users table.This is what is redundant data.
+
+Notice this schema is still full proof. We can get all the orders given a user_id. We can tell the user's details (username, name) given an order_id.
+
+--------------
+
+users table columns -> id | username | password | name
+orders table columns -> id | name | amount
+
+This is not a full proof schema -> doesn't contain user_id. if we need to query the username in the future where we have to show Amount - Name - Username, we can't make a single query as there is no relation between the two tables. here there can be multiple persons with the same name, we should have made a relationship between the two tables using user_id so that we can distinguish the order.
+
+This data doesn't have any relationship between the two tables. This is just plain wrong. You can never tell the orders for a user(if there are multiple users with the same name). Normalisation is done on tables that are full proof to remove redundancy.
+
+we already have user_id in orders table, so there is no need to put name in the order table as well.
+
+The source of truth should be user table from where we can get the name. Else if we ever change the name in the user table, we have to change it in the order table as well. we shouldn't keep redundant data.
+
+So we should normalize the order table and not keep the name column, instead we can relate the order table with the user table using the user_id and get the name from there wherever we need it in our query.
+
+-----------
+
+Types of relationship =>
+
+usecase - library management system
+    - Users table
+    - Library card table
+    - Books table
+    - Genre table
+
+One to One -> each user has a single Library card.
+One to Many -> Each user can have multiple books issued to their name. / User can have multiple posts in a blog app./ a single user can check in and check out multiple times from a library.
+Many to One -> opposite of above.
+Many to Many -> Multiple authors/users can write a single/multiple post/blog. A single book can have multiple genres.
+
+--------------------
+
+Normalizing data
+
+Normalization in DBs is a systematic approach of decomposing tables to eliminate data redundancy and improve data integrity.
+
+The process typically progresses through several normal forms, each building on thelast.
+
+When you look at a schema, you can indentify if it lies in one of the following categories of normalization:
+1NF, 2NF, 3NF, BCNF, 4NF, 5NF
+
+You aim to reach 3NF/BCNF usually. The lower you go, the more normalized your table is. But over normalization can lead to excessive joins.
+
+1NF ->
+- A single cell must not hold more than one value(atomicity): This rule ensures that each column of a DB table holds only atomic (indivisible) values, and multi-valued attributes are split into separate rows. For example: if a column is meant to store phone numbers, and a person has multiple phone numbers, each number should be in a separate row, not as a list or set in a single row.
+
+studentId | Name | Activities
+1           John    Basketball, Soccer, Chess
+
+instead 
+
+1           John    Basketball
+1           John    Soccer
+1           John    Chess
+
+- There must be a primary key for identification: Each table should have a primary key, which is a column (or set of columns) that uniquely identifies each row in a table.
+
+- No Duplicated rows: To ensure that the data in the table is organised properly and to uphold the integrity of the data, each row in the table should be unique. This rule works hand in hand with the presence of a primary key to prevent duplicate entries which can lead to anamolies.
+
+- Each column must have only one value for each row in the table: This rule emphasizes that every column must hold only one value per row, and that value should be of the same kind for that column across all rows.
+
+contact information
+alice@example.com,(111-222-3333)
+
+we should put them in separate columns
+email | phone number
+
+2NF ->
+makes sense when you have a composite primary key.
+
+1NF gets rid of repeating rows. 2NF gets rid of redundancy
+
+A table is said to be in 2NF if it meets the following criteria:
+    - is already in 1NF and has 0 partial dependency.
+
+Partial Dependency :-
+
+This occurs when a non-primary key attribute is dependent on part of a composite primary key, rather than on the whole primary key. In simpler terms, if your table has a primary key made up of multiple columns, a partial dependency exists if an attribute in the table is dependent only on a subset of those columns that form the primary key.
+
+ex - table having composite primary key -> [studentID, courseID] and other attributes like instructorName and courseName. If courseName is dependent only on courseID and not on the complete composite key [studentID,courseID], then courseName has a partial dependency on the primary key. This violates 2NF.
+
+The instructor name and course name are repeated in rows, even though the name of an instructor should be the same for a given course id.
+
+CourseName and instructorName have a partial dependency on courseID.
+
+student id | course id | course name | instructor name | grade
+001           CS101      Computer Science  De Smith       A 
+002           CS101      Computer Science  De Smith       B 
+001           MA101      Mathematics       De Johnsson    C 
+003           CS101      Computer Science  De Smith       A
+
+
+We can solve it by breaking them into 2 separate tables -
+
+student table (course id and student id - composite primary key) and course table (course id primary key)
+
+course id | course name | instructor name
+CS101      Computer Science  De Smith
+MA101      Mathematics       De Johnsson
+
+student id | course id | grade
+001           CS101        A 
+002           CS101        B 
+001           MA101        C 
+003           CS101        A 
+
+grade depends on both courseID + studentID.
+
+3NF - 
+When a table in 2NF, it eliminates repeating groups and redundancy, but it does not eliminate transitive partial dependency.
+
+for a table to be in 3NF, it must be ->
+    - be in 2NF and have no transitive partial dependency
+
+A transitive partial dependency in RDBMS occurs when one non-key attribute indirectly depends on the primary key through another non-key attribute.
+
+course id | course name | instructor id | instructor name | age | yoe
+1            CS                1              kirat            26   5
+2            DBMS              2              hirat            25   4
+3            OS                1              kirat            26   5
+
+it is still in 2NF since it doesn't have partial dependency, since it doesn't have composite primary key.
+
+here instructorName depends on instructor id and instructor id depends on course id(primary key). so it has transitive partial dependency.
+
+whatwe can do here is we can again break the table into 2 tables courses table and instructor table with instructor id as a foreign key in course table.
+
+```
+course id | courseName | instructorId => course table
+instructorId | instructorName | age | yoe
+
+```
+
+Now if anyone changes the instructor name then we just have to change it in one place and there won't be any data integrity issues / redundancy.
+
+These things can be thought from first principles, when we are building the tables.
+
+EmpID | EmpName | DepID | DepName | DepLoc
+
+DepName has dependency on DepID which has dependency on EmpID and thus has a transitive dependency on the primary key(EmpID)
+
+we can remove the transitive dependency by separating them into two separate tables -> Employee and Department table.
+
+EmpID | EmpName | DepID 
+
+DepID | DepName | DepLoc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
