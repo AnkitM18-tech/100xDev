@@ -1,0 +1,596 @@
+Why WebRTC?
+
+WebRTC is the core/only protocol that lets you do real time media communication from inside a browser.
+ 
+We already did this fairly well in a live stream =>
+
+https://github.com/hkirat/omegle/tree/master
+https://www.youtube.com/watch?v=0MIsI2xh9Zk
+ 
+You use WebRTC for applications that require sub second latency. 
+Examples include ->
+    Zoom/Google meet (Multi party call)
+    Omegle, teaching (1:1 call)
+    30FPS games (WebRTC can also send data)
+
+---------------------------
+
+WebRTC Architecture/jargon =>
+
+P2P ->
+    - WebRTC is a peer to peer protocol. This means the you directly send your media over to the other person without the need of a central server
+    - Sending Video/Audio through servers are expensive operations. If we send video through a central server, then the prices would be ridiculously high. Also a person can find out the IP of the other person in P2P applications, because the datais coming directly from the other user, not via server.
+    - You do need a central server for signalling and sometimes for sending media as well (turn). We’ll be discussing this later
+
+Signalling server ->
+    - Both the browsers need to exchange their address before they can start talking to each other. A signaling server is used for that. 
+    - It is usually a websocket server but can be anything (http)
+
+Stun (Session Traversal Utilities for NAT) NAT - Network Address Translation ->
+    - It gives you back your publically accessable IPs. It shows you how the world sees you
+    - There are limited number of publicly available IPs. So many people can have the same IP if they are connected to a certain router network. So only the router knows the "public IP:port_number" on which a certain user is connected. We can get that via NAT. NAT internally maintains an Address table which can give you the port number on that specific IP address for a user to route the traffic to the user's machine.
+    - Signaling server won't be able to find out all the addresses for a machine (public, private IP address) because generally it's an HTTP/Websocket server and don't have the STUN protocol running on it, so it can't gather the ICE candidates.So before sending the signaling server your IP we need to get it from the STUN server first. It will give us the IP with the port_number of the router I am connected to.
+    - We ask the STUN server for our ICE candidates(a bunch of IP-port combinations where a user can be discovered and data can be sent from/to). Then we tell the Signaling server that these are the ICE candidates for a user. The signaling server will then send the ICE candidates to the other user you are trying to connect to. The other person does the same thing as well. Then they can send each other data, now that they know each other's IP-port combinations. Now they can kill the signaling server, it doesn’t matter.
+    - Check https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/
+
+Ice candidates ->
+    - ICE (Interactive Connectivity Establishment) candidates are potential networking endpoints that WebRTC uses to establish a connection between peers. Each candidate represents a possible method for two devices (peers) to communicate, usually in the context of real-time applications like video calls, voice calls, or peer-to-peer data sharing.
+ 
+    - If two friends are trying to connect to each other in a hostel wifi , then they can connect via their private router ice candidates. 
+
+    - If two people from different countries are trying to connect to each other, then they would connect via their public IPs.
+
+Turn server ->
+    - A lot of times, your network doesn’t allow media to come in from browser 2 . This depends on how restrictive your network(NAT) is.
+    - Since the ice candidate is discovered by the stun server, your network might block incoming data from browser 2 and only allow it from the stun server
+    - Turn Server is the fallback option for the connections which are turned down by the restrictive network.
+    - Apart from the ICE candidates, the browsers will have the turn server IP as well which will be the fallback option, in case none of the ice candidates work in establishing a connection, then we can send the data to turn server and it will pass around the data to the other browser.
+    - Turn server is a fallback in case we are not able to directly talk between the machines(browsers), due to their restrictive nature.
+    - for 95% of the time, P2P will work, for 5% of the time where NATs are strict, turn server is a fallback.
+
+Offer ->
+    - The process of the first browser (the one initiating connection) sending their ice candidates to the other side.
+
+Answer ->
+    - The other side returning their ice candidates is called the answer.
+
+If there is going to be a single way connection, then we have to create a single webRTC connection, where one(1) will make an offer and other(2) will answer.
+
+If there is a two way communication needed, then we have to create 2 webRTC connection,where in one connection one(1) will make an offer and other(2) will answer and vice-versa. In case both the parties want to send and receive data we need to create 2 webRTC connections.If only one side is sending data and other side is only receiving data we need to make only 1 webRTC connection.
+
+SDP - Session description protocol ->
+    - A single file that contains all your 
+        - ice candidates
+        - what media you want to send, what protocols you’ve used to encode the media
+    - This is the file that is sent in the offer and received in the answer
+    - After getting the ice candidates from the STUN server, the one who makes the offer sends the SDP File to the signaling server and that gets sent to the other browser(2), which creates an answer (again an SDP File). and sends it through the signaling server to the person who created the offer. 
+
+Example - 
+
+v=0
+o=- 423904492236154649 2 IN IP4 127.0.0.1
+s=-
+t=0 0
+m=audio 49170 RTP/AVP 0
+c=IN IP4 192.168.1.101
+a=rtpmap:0 PCMU/8000
+a=ice-options:trickle
+a=candidate:1 1 UDP 2122260223 192.168.1.101 49170 typ host
+a=candidate:2 1 UDP 2122194687 10.0.1.1 49171 typ host
+a=candidate:3 1 UDP 1685987071 93.184.216.34 49172 typ srflx raddr 10.0.1.1 rport 49171
+a=candidate:4 1 UDP 41819902 10.1.1.1 3478 typ relay raddr 93.184.216.34 rport 49172
+
+RTCPeerConnection (pc, peer connection) ->
+    - https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection
+    - This is a class that the browser provides you with which gives you access to the sdp, lets you create answers / offers , lets you send media.
+    - This class hides all the complexity of webrtc from the developer
+
+Summary ->
+    - You need a signaling server, stun server to initiate the webrtc conn b/w the parties. You can kill these once the conn is made.
+    - You need to include a turn server incase any of the users are on a restrictive network so you can get back a turn ice candidate as well.
+
+------------------------------
+
+Connecting the two sides =>
+
+The steps to create a webrtc connection between 2 sides includes - 
+ 
+- Browser 1 creates an RTCPeerConnection
+- Browser 1 creates an offer
+- Browser 1 sets the local description to the offer
+- Browser 1 sends the offer to the other side through the signaling server
+- Browser 2 receives the offer from the signaling server
+- Browser 2 sets the remote description to the offer
+- Browser 2 creates an answer
+- Browser 2 sets the local description to be the answer
+- Browser 2 sends the answer to the other side through the signaling server
+- Browser 1 receives the answer and sets the remote description
+ 
+This is just to establish the p2p connection b/w the two parties
+ 
+To actually send media, we have to 
+    - Ask for camera /mic permissions
+    - Get the audio and video streams
+    - Call addTrack on the pc
+    - This would trigger a onTrack callback on the other side
+ 
+
+---------------------
+
+Implementation =>
+We will be writing the code in 
+    - Node.js for the Signaling server. It will be a websocket server that supports 3 types of messages
+        - createOffer
+        - createAnswer
+        - addIceCandidate
+    - React + PeerConnectionObject on the frontend
+ 
+We’re actually building a slightly complex version of https://jsfiddle.net/rainzhao/3L9sfsvf/
+
+------------------------
+
+HLS - HTTP Live Streaming => 10s delay => good for cricket/football matches => prime quality and costs are lower
+
+WebRTC - latency is low (0.1s) => good for Google Meet / Omegle etc usecases, if we use this for Live Streaming, then the latency will be low, but prices will be much much higher. - when both the sides need to interact then it is a good choice.
+
+WebRTC for the curious -> book to watch out later.
+
+-----------------------------------
+
+Browser 1
+
+const pc = new RTCPeerConnection();
+const offer = await pc.createOffer();
+pc.setLocalDescription(offer);
+
+This (offer) reaches the other side via signaling server
+
+Browser 2
+
+const pc = new RTCPeerConnection();
+pc.setRemoteDescription(offer);
+const answer = await pc.createAnswer();
+pc.setLocalDescription(answer);
+
+This (answer) reaches the other side
+
+Browser 1
+
+pc.setRemoteDescription(answer);
+
+
+SDP File -> contains your IP address, audio you are sending, video you are sending, encoding used, ice candidates all written in a single file. --> This file gets created while making an offer and answer.
+
+----------------------------------------
+
+In a Google Meet call, we are not connected to everybody individually, we are connected via a google server. We can't follow the discussed architecture (offer - answer webRTC connections) for multi-party call, because we can't just send the audio and video to 100 people by making 100 webRTC connections. If we need 100 people on the call, then our architecture should look like this =>
+
+I send my video to a single server(for GMeet -> google server), and the central server's job is to send the video to all other connected users. This central server can be (AWS EC2 instance / GCP / Azure equivalent which normally have high bandwidths upto 10gbps or more - which is not possible from our machines/network/ bandwidth will not be able to handle it)
+
+This architecture is called SFU (Selective Forwarding Unit) - it selectively forwards our packets depending upon which page you are on.(example -> if a browser is not connected to a call yet, still on the welcome page,then we don't need to send our video to that user)
+
+----------------------
+
+Other architectures =>
+There are two other popular architectures for doing WebRTC
+    - SFU
+    - MCU
+Problems with p2p =>
+Doesn’t scale well beyond 3-4 people in the same call
+
+SFU
+    - SFU stands for Selective forwarding unit.  This acts as a central media server which forwards packets b/w users
+
+Popular Open source SFUs - 
+    - https://github.com/versatica/mediasoup
+    - https://github.com/pion/webrtc (not exactly an SFU but you can build one on top of it)
+
+MCU
+- It mixes audio/video together on the server before forwarding it. 
+This means it needs to
+    - decode video/audio (using something like ffmpeg)
+    - Mix them (create a video canvas/create a single audio stream)
+    - Send out the merged audio stream to everyone
+
+downside of SFU is the videos can be paginated but the audios can not be paginated. We can get the audio of someone who is on Page 3. If we have so many users on a call, then we will get overwhelmed by so many audios and we need to create track for every audio. Eventually leads to Audio Crackling, due to so many incoming audio tracks. This issue is resolved in MCU.
+The server will do the heavy lifting of merging all the incoming audio/video and send together.
+
+Optimisations -> instead of merging all the audio/video, merge 3 loudest audios.
+
+We can do video merging => create a canvas and create grids of videos on the server and send that video grid to everyone, but we should not do it, because everyone has their own layout and they should have the freedom to set their own layout(pin/unpin someone etc). and we can't do multiple layouts for all users, that would be too expensive.
+
+Generally MCU => used for mixing audio and for everything else we can use SFU like architecture. MCU will have some latency. We have to make 4 tracks in case of 2 users => 1 track for merged, 1 for user 1 where we have user 2 audio, 1 for user 2 where we have user 1 audio, one for loudest audios.for more users we will need more such tracks.
+
+If audio and video are coming from 2 separate sources there will be syncing issues.
+
+diff =>
+    - SFU - forwards packets => doesn’t need t decode video/audio
+    - MCU - decodes video/audio (ffmpeg) and mix them(merge) => re-encode and send out merged audio stream. - expensive
+
+---------------------
+
+Also in Google Meet / Zoom like applications, when we have a lot of users, then we have pages like 1st page will show only 20/30 users avatars and when we go to the next page the next 30 will appear. So like wise the packages are selectively forwarded. and when the avatar screen is small then the video quality is low and when we pin it it becomes high resolution, these kinds of optimisations are very hard to achieve in P2P like architecture. So SFU & MCU architectures shine here, where we have a central server for handling these processes.
+
+For multi-party user calls => Optimizations
+    - Stopping people's video, when BW gets choked
+    - Downscaling people's video
+    - Receiving video in a paginated manner (Selective Packets Forwarding depending upon the page we are on)
+
+*
+janus,jitsi,mediasoup,pion => generally used to build scalable webRTC apps.(more than 5)
+*
+
+There can be distributed SFUs architecture. Single SFU server sending data to other node SFUs and users can get data from any of the nodes. It can support very large number of connections.
+
+ex- Unacademy => chat section => websocket connection
+screenshare and instructor video => coming from SFU server
+
+Cloud recordings are a usecase of MCU architecture.
+
+Suppose we have zoom like class => 
+we send data to an SFU server from there it is getting transmitted to the attendees.
+
+Then there is another server (Mixer) where in the cloud recording we are mixing the video and audio and creating an mp4 file.
+
+Simulcast -> browser sends multiple quality videos to the SFU server, and then when someone asks the server for 360p it returns, when someone pins the video it returns 720p like that. because SFUs don't decode/encode videos. We don't actually transcode the video on the server, the browser sends the video with multiple qualities.
+
+Live Video Streaming => get the entire video in almost realtime frame by frame.
+Recorded Video Streaming => get the data in chunks, here no need of sending the entire video at once.
+
+When we have live streaming - UDP is good, because in UDP if the packet is lost then it is lost, the video will be choppy but the live stream will continue. But in TCP, if a packet gets lost it will re-ask for the packet, but it is the old data, we can't just send the old packet and then fast forward with the live stream. So Live Video Streaming the best option is UDP.
+
+
+------------------------
+
+trickle ice => a lot of times the ice candidates slowly trickle in. i.e to create the initial SDP the browser doesn't have your ice candidates, we have to send them eventualy to the other browser through signaling server when we get those from the STUN server.
+
+------------------------
+
+Backend
+
+Create an empty TS project, add ws to it =>
+
+npm init -y
+npx tsc --init
+npm install ws @types/ws
+
+Change rootDir and outDir in tsconfig =>
+
+"rootDir": "./src",
+"outDir": "./dist",
+
+Create a simple websocket server =>
+
+import { WebSocketServer } from 'ws';
+
+const wss = new WebSocketServer({ port: 8080 });
+
+let senderSocket: null | WebSocket = null;
+let receiverSocket: null | WebSocket = null;
+
+wss.on('connection', function connection(ws) {
+  ws.on('error', console.error);
+
+  ws.on('message', function message(data: any) {
+    const message = JSON.parse(data);
+    
+  });
+
+  ws.send('something');
+});
+
+Try running the server =>
+
+tsc -b
+node dist/index.js
+
+Add message handlers =>
+
+import { WebSocket, WebSocketServer } from 'ws';
+
+const wss = new WebSocketServer({ port: 8080 });
+
+let senderSocket: null | WebSocket = null;
+let receiverSocket: null | WebSocket = null;
+
+wss.on('connection', function connection(ws) {
+  ws.on('error', console.error);
+
+  ws.on('message', function message(data: any) {
+    const message = JSON.parse(data);
+    if (message.type === 'sender') {
+      senderSocket = ws;
+    } else if (message.type === 'receiver') {
+      receiverSocket = ws;
+    } else if (message.type === 'createOffer') {
+      if (ws !== senderSocket) {
+        return;
+      }
+      receiverSocket?.send(JSON.stringify({ type: 'createOffer', sdp: message.sdp }));
+    } else if (message.type === 'createAnswer') {
+        if (ws !== receiverSocket) {
+          return;
+        }
+        senderSocket?.send(JSON.stringify({ type: 'createAnswer', sdp: message.sdp }));
+    } else if (message.type === 'iceCandidate') {
+      if (ws === senderSocket) {
+        receiverSocket?.send(JSON.stringify({ type: 'iceCandidate', candidate: message.candidate }));
+      } else if (ws === receiverSocket) {
+        senderSocket?.send(JSON.stringify({ type: 'iceCandidate', candidate: message.candidate }));
+      }
+    }
+  });
+});
+
+That is all that you need for a simple one way communication b/w two tabs =>
+
+To have both the sides be able to send each other media, and support multiple rooms, see https://github.com/hkirat/omegle/
+
+
+-----------------------------
+
+Frontend =>
+
+Create a frontend repo
+  - npm create vite@latest
+
+Add two routes, one for a sender and one for a receiver =>
+
+import { useState } from 'react'
+import './App.css'
+import { Route, BrowserRouter, Routes } from 'react-router-dom'
+import { Sender } from './components/Sender'
+import { Receiver } from './components/Receiver'
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/sender" element={<Sender />} />
+        <Route path="/receiver" element={<Receiver />} />
+      </Routes>
+    </BrowserRouter>
+  )
+}
+
+export default App
+
+Remove strict mode in main.tsx to get rid of a bunch of webrtc connections locally (not really needed)
+
+Create components for sender =>
+
+```
+
+import { useEffect, useState } from "react"
+
+export const Sender = () => {
+    const [socket, setSocket] = useState<WebSocket | null>(null);
+    const [pc, setPC] = useState<RTCPeerConnection | null>(null);
+
+    useEffect(() => {
+        const socket = new WebSocket('ws://localhost:8080');
+        setSocket(socket);
+        socket.onopen = () => {
+            socket.send(JSON.stringify({
+                type: 'sender'
+            }));
+        }
+    }, []);
+
+    const initiateConn = async () => {
+
+        if (!socket) {
+            alert("Socket not found");
+            return;
+        }
+
+        socket.onmessage = async (event) => {
+            const message = JSON.parse(event.data);
+            if (message.type === 'createAnswer') {
+                await pc.setRemoteDescription(message.sdp);
+            } else if (message.type === 'iceCandidate') {
+                pc.addIceCandidate(message.candidate);
+            }
+        }
+
+        const pc = new RTCPeerConnection();
+        setPC(pc);
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket?.send(JSON.stringify({
+                    type: 'iceCandidate',
+                    candidate: event.candidate
+                }));
+            }
+        }
+
+        pc.onnegotiationneeded = async () => {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            socket?.send(JSON.stringify({
+                type: 'createOffer',
+                sdp: pc.localDescription
+            }));
+        }
+            
+        getCameraStreamAndSend(pc);
+    }
+
+    const getCameraStreamAndSend = (pc: RTCPeerConnection) => {
+        navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.play();
+            // this is wrong, should propogate via a component
+            document.body.appendChild(video);
+            stream.getTracks().forEach((track) => {
+                pc?.addTrack(track);
+            });
+        });
+    }
+
+    return <div>
+        Sender
+        <button onClick={initiateConn}> Send data </button>
+    </div>
+}
+
+```
+
+Create the component for receiver =>
+
+```
+
+import { useEffect } from "react"
+
+
+export const Receiver = () => {
+    
+    useEffect(() => {
+        const socket = new WebSocket('ws://localhost:8080');
+        socket.onopen = () => {
+            socket.send(JSON.stringify({
+                type: 'receiver'
+            }));
+        }
+        startReceiving(socket);
+    }, []);
+
+    function startReceiving(socket: WebSocket) {
+        const video = document.createElement('video');
+        document.body.appendChild(video);
+
+        const pc = new RTCPeerConnection();
+        pc.ontrack = (event) => {
+            video.srcObject = new MediaStream([event.track]);
+            video.play();
+        }
+
+        socket.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            if (message.type === 'createOffer') {
+                pc.setRemoteDescription(message.sdp).then(() => {
+                    pc.createAnswer().then((answer) => {
+                        pc.setLocalDescription(answer);
+                        socket.send(JSON.stringify({
+                            type: 'createAnswer',
+                            sdp: answer
+                        }));
+                    });
+                });
+            } else if (message.type === 'iceCandidate') {
+                pc.addIceCandidate(message.candidate);
+            }
+        }
+    }
+
+    return <div>
+        
+    </div>
+}
+
+
+
+Final code - https://github.com/100xdevs-cohort-2/week-23-webrtc
+
+Assignment =>
+
+Can you change the code so that
+A single producer can produce to multiple people?
+Add room logic.
+Add two way communication.
+Replace p2p logic with an SFU (mediasoup)
+
+
+```
+
+Webrtc stats =>
+
+You can look at a bunch of stats/sdps in => about:webrtc-internals
+A lot of times you ask users to dump stats from here for better debugging
+
+Using libraries for p2p =>
+
+As you can see, there is a lot of things we had to know to be able to build a simple app that sends video from one side to another
+
+There are libraries that hide a lot of this complexity (specifically the complexity of the RTCPeerConnectionObject from you).
+
+https://peerjs.com/
+
+
+Other architectures =>
+
+There are two other popular architectures for doing WebRTC
+  - SFU
+  - MCU
+
+Problems with p2p =>
+Doesn’t scale well beyond 3-4 people in the same call
+
+SFU =>
+
+SFU stands for Selective forwarding unit.  This acts as a central media server which forwards packets b/w users
+
+Popular Open source SFUs - 
+  - https://github.com/versatica/mediasoup
+  - https://github.com/pion/webrtc (not exactly an SFU but you can build one on top of it)
+
+MCU =>
+
+It mixes audio/video together on the server before forwarding it.
+
+This means it needs to
+  - decode video/audio (using something like ffmpeg)
+  - Mix them (create a video canvas/create a single audio stream)
+  - Send out the merged audio stream to everyone
+
+-----------------------------
+
+pc.addTrack() => will trigger an onnegotiationneeded, which in turn will update the sdp and the receiver will get to know the video will come from this specific IP or port.
+
+negotiation is needed because we might want to add more video/audio/screenshare track as well, so in that case pc.onnegotiationneeded needs to run in order to update the sdp(which contains the video,audio data and sends it to the receiver)
+
+we can also put a setTimeout in the pc.onnegotiationneeded for the ice candidates to gather before sending the sdp to the receiver. 
+
+pc.addTrack in sender side to send the data(video/audio) and pc.ontrack in receiver side to receive the data(video/audio).
+
+pc.ontrack callback will be triggered when you receive data from sender.
+
+video returns => stream => which can have an audio track and a video track, that's why we passed an array inside new MediaStream([event.track])
+
+
+navigator.mediaDevices.getDisplayMedia({video: true,audio:false}); => to display share screen. we need to recall the play method whenever a fullscreen video comes. It's a common problem when you just shove the video into the DOM like we did.
+
+multi-party data sending => we should use SFU like architecture -> right way to do it. p2p will become complicated and harder to scale.
+
+how to debug => check for inbound videos on receiver => 
+
+setTimeout(() => {
+    video.play();
+},1000);
+
+video.controls = true; => allow you to click on play button to start incoming video.
+
+to check stun server response => stun webrtc test => trickle ICE link check.
+
+If we have multiple receivers, then =>
+    - we need a receiver socket array
+    - we need to give individual receiver an id, by which they can be distiguished.
+    - In the server when we are checking for the message type to be "createAnswer", we can send the senderSocket the id as well with the sdp, to indetify the user currently sending you the answer.
+    - In client side(Sender.tsx) we can check for the correct id from the receiver and set the setRemoteDescription.
+
+
+we can force turn the p2p connection =>
+
+const pc = new RTCPeerConnection({iceTransportPolicy: "relay"});
+
+It will ignore all non-turn candidates => 
+we can force turn the connection.
+
+It is much better to send data directly(low latency) rather than through a turn server, but for fallback we should keep a turn server as well.
+
+MediaStream is a construct browser provides you.
+
+
+
+

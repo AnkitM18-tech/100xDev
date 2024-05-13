@@ -84,3 +84,12 @@ Stack =>
     Postgres Database
     Prisma ORM
     Tailwind
+
+
+webhook servers are servers with which other external servers / services interact only, our own FE never interact with the webhook server.
+
+One Approach ->
+website -> payment (pay now) -> request goes to transaction page of our backend and then from there request goes to bank servers (suppose userId: 12 wants to pay 12k, so give me a url where they can make payment) -> bank server returns a url in return for the user to make payment (url - netbanking.icici.com?token="xyzbooyah") and the user then gets redirected to that page url returned by bank server. and via that token the bank server will make sure that this is the user our backend was talking about and authenticity of the user is verified. Then the payment is made and the bank server will send acknowledgment to the webhook server which will then register purchase in the DB.
+
+On Ramping =>
+    - 
