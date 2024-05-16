@@ -629,7 +629,9 @@ Given the .proto file, we can write our backend in any language we want and call
 .proto file grows as your application grows. just like our openapi.spec file we need to maintain it.
 
 
+if we want to communicate b/w browsers, then we need HTTP. If we want to communicate b/w backends, then gRPC can be used.
 
+gRPC uses HTTP/2.0 => maybe because 2 way communication is not possible with HTTP/1.1
 
 
 
