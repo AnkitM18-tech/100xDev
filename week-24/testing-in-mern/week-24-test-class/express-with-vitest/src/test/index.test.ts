@@ -1,11 +1,13 @@
 import { describe, expect, vi, it } from "vitest";
 import request from "supertest";
 import { app } from "../index";
+import { userFn } from "../utils/users";
 
 // vi.mock("../db", () => ({
 //   prismaClient: { sum: { create: vi.fn() } },
 // }));
-vi.mock("../db");
+vi.mock("../db"); // will look for the db file in the __mock__ folder first. If the __mocks__ folder is not found, then go for file.
+vi.mock("../utils/users");
 
 describe("POST /sum", () => {
   it("should return the sum of two numbers", async () => {
@@ -13,6 +15,8 @@ describe("POST /sum", () => {
       a: 1,
       b: 2,
     });
+    console.log(userFn());
+
     expect(res.statusCode).toBe(200);
     expect(res.body.answer).toBe(3);
   });
