@@ -1,0 +1,11 @@
+1.clone starter project repository - paytm-project-starter-monorepo
+
+2. npm install globally
+3. cd packages/db
+4. Adding .env file with DATABASE_URL
+5. npx prisma migrate dev
+6. npx prisma generate
+7. Add .env file to app/user-app
+8. npm run dev
+
+
