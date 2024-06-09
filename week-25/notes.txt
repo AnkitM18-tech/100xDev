@@ -487,7 +487,14 @@ describe('Testing app', () => {
 
 -----------------------------------------------------
 
-
+Integration Testing ->
+when we run this -> it should the following actions
+  npm run test
+    - starts postgres (using docker)
+    - checks postgres health
+    - npx prisma migrate (create tables)
+    - npx prisma generate
+    - describe => it
 
 
 
