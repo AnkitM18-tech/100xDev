@@ -483,9 +483,16 @@ Try going to http://localhost:9090/
 Try executing a query
 http_requests_total
 
+Types Of Metrics
 
+Counter -> no of requests, no of exceptions -> value can only go up (increases, never decreases), however the rate can go down (change in number of requests/exceptions i.e slope in the graph)
 
+total number of requests/exceptions => will ony go up
+(request/exceptions)/sec => can vary (might go up or down)
 
+We usually store counters -> total number of requests/exceptions, we can always derive the rate of requests/exceptions from the graph.
+
+Gauge -> memory usage, cpu usage => value that can go up or down, we store it in a gauge.
 
 
 
