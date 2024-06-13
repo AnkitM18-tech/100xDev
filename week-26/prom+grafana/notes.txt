@@ -483,6 +483,7 @@ Try going to http://localhost:9090/
 Try executing a query
 http_requests_total
 
+------------------------------------------------------------------
 Types Of Metrics
 
 Counter -> no of requests, no of exceptions -> value can only go up (increases, never decreases), however the rate can go down (change in number of requests/exceptions i.e slope in the graph)
@@ -493,6 +494,176 @@ total number of requests/exceptions => will ony go up
 We usually store counters -> total number of requests/exceptions, we can always derive the rate of requests/exceptions from the graph.
 
 Gauge -> memory usage, cpu usage => value that can go up or down, we store it in a gauge.
+
+
+Histogram -> time took to resolve the request => when we have to define a number of buckets where we will include all the response time. so that we don't have a large file, instead we can bucket them into buckets, which is more effcient. We don't worry about the specific user performance, instead we can focus on the entire user experience across.
+
+We know that every request that comes to our website that lies b/w one of the buckets.
+
+------------------------------------------------------------------
+
+Queries in Prom =>
+
+Simple queries (counters and gauges)
+Here are some Prometheus queries you can run on localhost:9090 to analyze the metrics provided:
+
+1. Total Number of HTTP Requests
+To get the total number of HTTP requests per route
+    - http_requests_total
+
+2. Total Number of HTTP Requests (cumulative)
+    - sum(http_requests_total)
+
+3. HTTP Request Duration
+    - http_request_duration_ms_sum
+
+4. Count of total number of http requests
+    - http_request_duration_ms_count
+
+5. Average time it took to handle all requests 
+    - http_request_duration_ms_sum / http_request_duration_ms_count
+
+
+Complex queries (histograms) =>
+
+1. See the request duration in buckets
+    - http_request_duration_ms_bucket
+
+2. See requests for a specific route
+    - http_request_duration_ms_bucket{method="GET", route="/metrics", code="200"}
+
+Graphs in prom =>
+
+Prometheus also lets you visualise data as graphs
+Lets see a few queries
+ 
+1. Total number of requests 
+    - http_requests_total
+
+As you can tell, this is a very vague metric since it is cumulative. It is the total number of requests, but you usually want to see the rate at which requests are coming.
+
+2. Rate of number of requests
+    - rate(http_requests_total[5m])
+
+3. Rate of all the requests (sum up /metrics and /user requests)
+    - sum(rate(http_requests_total[5m]))
+
+4. Average HTTP request duration with timeseries (5 minute buckets)
+    - rate(http_request_duration_ms_sum[5m]) / rate(http_request_duration_ms_count[5m])
+
+
+Grafana ->
+can integrate with other services. Gives power to prometheus.
+
+Ref - https://grafana.com/ ->
+
+Even though you can use the prom interface, grafanna makes your life much easier
+You can connect your prometheus data to grafana to be able to visualise your data better
+
+Grafana will poll data from prometheus and we can make queries on that data and create charts with it.
+
+
+Installing grafana in docker compose ->
+
+Update docker-compose ->
+
+version: '3.8'
+
+services:
+  node-app:
+    build: ./
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    networks:
+      - monitoring
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+
+networks:
+  monitoring:
+
+Try visiting localhost:3001
+
+Adding prometheus as a source =>
+ 
+Create a connection
+
+Source URL
+http://prometheus:9090
+
+
+Assignment =>
+
+Try building a dashboard that has
+Total number of requests to /metrics endpoint
+Number of http requests to the /metrics endpoint per second
+Total number of requests to the /user endpoint
+Number of http request  to the /user endpoint per second
+A gauge that lets you see the current active requests
+
+
+Alerting
+ 
+Grafana provides you with a way to set alerts on metrics.
+
+Steps ->
+
+Enter a name for it -> High number of requests
+
+Define query ->
+    - rate(http_requests_total{route="/user"}[$__rate_interval])
+
+
+- Setup alert threshold (lets say 50 requests/s)
+- Set evaluation behaviour
+        - How often should we check this alert?
+        - Create  folder so that it can be re-used later
+- Add labels
+    - Team: Backend
+    - Type: Error
+- Save
+ 
+
+Testing ->
+
+Send a lot of requests to the /user endpoint and ensure it triggers the alert
+ 
+Notifying ->
+
+    - Create a new contact point 
+    - Connect the alert to the contact point in Notification policies
+
+This will not send a real email unless you’ve put in SMTP credentials while starting the apps
+
+
+1/15 secs => .067
+for prom.100x => 2/15secs => 1.33
+
+
+
+
+
+
+
+
+
+
 
 
 
