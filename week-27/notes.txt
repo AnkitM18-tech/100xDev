@@ -1,0 +1,405 @@
+What is kubernetes
+
+- Docker is a pre-requisite before you proceed to understand kubernetes
+
+Kubernetes (popularly known as k8s) is a container orchestration engine, which as the name  suggests lets you create, delete, and update containers
+
+This is useful when ->
+
+- You have your docker images in the docker registry and want to deploy it in a cloud native fashion
+- You want to not worry about patching, crashes. You want the system to auto heal
+- You want to autoscale with some simple constructs
+- You want to observe your complete system in a simple dashboard
+
+We give some specs (specifications) to k8s and it create, delete, update / monitor containers in the cluster.
+
+ex-
+k8's cluster =>
+    - AWS Machine 1 - BE Container 1 & BE Container 3
+    - AWS Machine 2 - BE Container 2
+    - AWS Machine 3 - FE Container 1
+
+containerized applications into images and pushed into dockerhub or similar registries.
+
+k8s take care of load balancing, creating and deleting containers.
+
+Before Kubernetes =>
+
+Backend ->
+
+request comes to load balancer(if it is a big scale app) => Then depending on the load on BE servers, the request is redirected.
+
+NextJs ->
+
+request comes to Frontend EC2 machine(FE + BE)
+
+Frontend React ->
+
+request goes to CDN(cloudfront/cloudflare) and then to s3(object store).the response comes to CDN and gets cached and forwarded to the user.
+
+After k8s =>
+
+Your frontend, backend are all pods in your kubernetes cluster
+
+Jargon
+Ref - https://kubernetes.io/docs/concepts/overview/components/
+
+Kubernetes Cluster ->
+
+    - AWS Machine 1(Worker) - BE pod 1 & BE pod 2
+    - AWS Machine 2(Worker) - BE pod 3
+    - AWS Machine 3(Worker) - FE pod 1
+    - AWS Machine 4(Master) -
+
+Before deploying any code in machines, we go to a cloud provider and create a bunch of machines there and install k8s on them.
+
+Whenever we want to create a k8s cluster ->
+We create a bunch of machines
+These bunch of machines is called a cluster.
+
+Inside the cluster we start some of them as workers and some of them we start as masters.
+
+we need to create this distinction between master and workers.
+
+The goal of the master is to listen to the developer. The developer tells the master what to do. It performs the operation with the help of workers.
+
+Master takes instructions from the developer -> 
+and containers gets deployed to the workers.
+
+k8s cluster -> bunch of machines with kubernetes installed
+Then we say the machines -> master and workers distinction.
+
+Workers pull from the master and start the containers.
+
+All machines are called Nodes. The small units inside the nodes are called pods.
+
+A single pod can run multiple containers. It is the smallest unit we can run in a node. In the pod we can run single container or multiple containers.
+
+
+Normal EC2 machine ->
+    - install docker
+    - docker run Image_Name
+    - a container starts
+
+K8s cluster ->
+    - install kubernetes
+    - start a pod
+    - inside the pod we can start multiple containers
+    - kubernetes start Image_Name
+    - pods are just abstractions, which run docker containers inside them. - pod = small machine inside a big node.- inside the small machine we can start containers.
+
+Cluster -> can have multiple Nodes -> Can have multiple Pods -> can have multiple Containers -> runs images from registry (dockerhub)
+
+
+Nodes ->
+In kubernetes, you can create and connect various machines together, all of which are running kubernetes. Every machine here is known as a node
+
+There are two types of nodes =>
+
+- Master Node (Control pane) - The node that takes care of deploying the containers/healing them/listening to the developer to understand what to deploy
+
+API Server ->
+    - Handling RESTful API Requests: The API server processes and responds to RESTful API requests from various clients, including the kubectl command-line tool, other Kubernetes components, and external applications. These requests involve creating, reading, updating, and deleting Kubernetes resources such as pods, services, and deployments
+
+    - Authentication and Authorization: The API server authenticates and authorizes all API requests. It ensures that only authenticated and authorized users or components can perform actions on the cluster. This involves validating user credentials and checking access control policies.
+
+    - Metrics and Health Checks: The API server exposes metrics and health check endpoints that can be used for monitoring and diagnosing the health and performance of the control plane.
+
+    - Communication Hub: The API server acts as the central communication hub for the Kubernetes control plane. Other components, such as the scheduler, controller manager, and kubelet, interact with the API server to retrieve or update the state of the cluster.
+
+etcd ->
+    - Consistent and highly-available key value store used as Kubernetes' backing store for all cluster data. Ref - https://etcd.io/docs/v3.5/quickstart/
+
+kube-scehduler ->
+    - Control plane component that watches for newly created Pods with no assigned node, and selects a node for them to run on. Its responsible for pod placement and deciding which pod goes on which node.
+
+kube-controller-manager ->
+    - Ref - https://kubernetes.io/docs/concepts/architecture/controller/
+
+    - The kube-controller-manager is a component of the Kubernetes control plane that runs a set of controllers. Each controller is responsible for managing a specific aspect of the cluster's state.
+
+There are many different types of controllers. Some examples of them are:
+    - Node controller: Responsible for noticing and responding when nodes go down.
+    - Deployment controller:  Watches for newly created or updated deployments and manages the creation and updating of ReplicaSets based on the deployment specifications. It ensures that the desired state of the deployment is maintained by creating or scaling ReplicaSets as needed.
+    - ReplicaSet Controller: Watches for newly created or updated ReplicaSets and ensures that the desired number of pod replicas are running at any given time. It creates or deletes pods as necessary to maintain the specified number of replicas in the ReplicaSet's configuration.
+
+- Worker Nodes - The nodes that actually run your Backend/frontend
+
+    - kubelet - An agent that runs on each node in the cluster. It makes sure that containers are running in a Pod.
+
+        - How the kubelet Control Loop Works
+            - Watch for PodSpecs: The kubelet watches the API server for PodSpecs that are scheduled to run on its node. This includes both new pods that need to be started and existing pods that may need to be updated or terminated.
+            - Reconcile Desired State: The kubelet compares the current state of the node (which pods are running, their statuses, etc.) with the desired state as defined by the PodSpecs.
+            - Take Action: Based on this comparison, the kubelet takes actions to reconcile the actual state with the desired state:
+                - Start Pods: If there are new PodSpecs, the kubelet will pull the necessary container images, create the containers, and start the pods.
+                - Monitor Health: The kubelet performs health checks (liveness and readiness probes) on running containers. If a container fails a health check, the kubelet may restart it according to the pod's restart policy.
+                - Update Pods: If there are changes to the PodSpecs (e.g., configuration changes), the kubelet will update the running pods accordingly.
+                - Stop Pods: If a pod is no longer needed or should be terminated, the kubelet will stop and remove the containers.
+            - Report Status: The kubelet periodically reports the status of the pods and the node back to the API server. This includes resource usage (CPU, memory, etc.) and the status of each container.
+
+    - kube-proxy - The kube-proxy is a network proxy that runs on each node in a Kubernetes cluster. It is responsible for you being able to talk to a pod
+
+        - kube-proxy -> iptables/IPVS (Network rules anaged by kube-proxy) -> Backend Pods
+
+    - Container runtime - In a Kubernetes worker node, the container runtime is the software responsible for running containers.
+
+        - It interacts with the kubelet, which is the agent running on each node, to manage the lifecycle of containers as specified by Kubernetes pod specifications. The container runtime ensures that the necessary containers are started, stopped, and managed correctly on the worker node.
+        - Common Container Runtimes for Kubernetes
+            - containerd
+            - CRI-O
+            - Docker
+        - Kubernetes Container Runtime Interface (CRI)
+            - The Container Runtime Interface (CRI) is a plugin interface that allows the kubelet to use a variety of container runtimes without needing to know the specifics of each runtime. This abstraction layer enables Kubernetes to support multiple container runtimes, providing flexibility and choice to users.
+
+
+Control Pane -> 
+
+Kubernetes API server <-----------------------  kubelet ->
+                                                Container Runtime Interface ->
+                                                Container Runtime ->
+                                                Running Containers
+
+Cluster =>
+    - A bunch of worker nodes + master nodes make up your kubernetes cluster . You can always add more / remove nodes from a cluster.
+Images =>
+    - A Docker image is a lightweight, standalone, and executable software package that includes everything needed to run a piece of software, including the code, runtime, libraries, environment variables, and configuration files. Images are built from a set of instructions defined in a file called a Dockerfile.
+        - Eg - https://hub.docker.com/_/mongo
+
+Containers =>
+A container is an image in execution. For example if you run
+    - docker run -p 5432:5432 -e POSTGRES_PASSWORD=mysecretpassword  -d postgres
+
+Pods =>
+A pod is the smallest and simplest unit in the Kubernetes object model that you can create or deploy
+
+we hit the API server of the master node =>
+dockerhub.com/100xdevs/image_be => 2 instances of the image needs to be run on the worker nodes
+
+API server will put the desired state as key:value pair in etcd ->
+
+{
+    pod1: {
+        image: ---,
+    },
+    pod2: {
+        image: ---,
+    }
+}
+
+scheduler will run infinitely and keeps on checking the etcd by hitting the API server, if there is a pod which is not assigned a worker node (any pending pod) => if there are unassigned pods then it will assign them with a worker node.
+
+{
+    pod1: {
+        image: ---,
+        node: worker 1
+    },
+    pod2: {
+        image: ---,
+        node: worker 2
+    }
+}
+
+controller manager ->
+    runs bunch of smaller controllers
+    - deployment
+    - jobs
+    - RS
+It runs an infinite controller and keeps on checking if the controllers have some pending tasks.
+
+-----------------------------------------------
+
+Creating a k8s cluster ->
+ 
+Locally (Make sure you have docker)
+    - minukube
+    - kind - https://kind.sigs.k8s.io/docs/user/quick-start/
+
+On cloud
+    - GKE
+    - AWS K8s
+    - vultr
+
+Using kind
+    - Install kind - https://kind.sigs.k8s.io/docs/user/quick-start/#installation
+
+Single node setup
+    - Create a 1 node cluster
+        - kind create cluster --name local
+
+Check the docker containers you have running
+    - docker ps
+
+You will notice a single container running (control-pane)
+Delete the cluster
+    - kind delete cluster -n local
+
+Multi node setup
+Create a clusters.yml file
+    kind: Cluster
+    apiVersion: kind.x-k8s.io/v1alpha4
+    nodes:
+    - role: control-plane
+    - role: worker
+    - role: worker
+
+Create the node setup
+  - kind create cluster --config clusters.yml --name local
+
+Check docker containers
+    - docker ps
+
+Now you have a node cluster running locally
+
+Using minikube
+ 
+Install minikube - https://minikube.sigs.k8s.io/docs/start/?arch=%2Fmacos%2Fx86-64%2Fstable%2Fbinary+download
+Start a k8s cluster locally
+
+minikube start
+Run docker ps to see the single node setup
+
+A single node setup works but is not ideal. You don’t want your control pane to run containers/act as a worker.
+
+master node exposes the Kubernetes API server on a url, which can be found by docker ps.
+
+we need the ~/.kube/config -> to interact with the API server.
+using kubectl CLI to interact with the master node - it will automatically pick the configuration/credentials from the ~/.kube/config.
+
+Kubernetes API ->
+The master node (control pane) exposes an API that a developer can use to start pods.
+Try the API ->
+Run docker ps to find where the control pane is running
+
+Try hitting various endpoints on the API server - https://127.0.0.1:50949/api/v1/namespaces/default/pods
+
+Kubernetes API server does authentication checks and prevents you from getting in.
+All of your authorization credentials are stored by kind in ~/.kube/config 
+
+kubectl =>
+kubectl is a command-line tool for interacting with Kubernetes clusters. It provides a way to communicate with the Kubernetes API server and manage Kubernetes resources.
+
+Install kubectl
+https://kubernetes.io/docs/tasks/tools/#kubectl
+
+Ensure kubectl works fine
+    kubectl get nodes
+    kubectl get pods
+
+If you want to see the exact HTTP request that goes out to the API server, you can add --v=8 flag
+    kubectl get nodes --v=8
+
+Creating a Pod =>
+
+There were 5 jargons we learnt about
+    Cluster
+    Nodes
+    Images
+    Containers
+    Pods
+
+We have created a cluster of 3 nodes
+How can we deploy a single container from an image  inside a pod ?
+
+Finding a good image ->
+Let’s try to start this image locally - https://hub.docker.com/_/nginx
+Starting using docker ->
+docker run -p 3005:80 nginx
+
+Try visiting localhost:3005
+
+Starting a pod using k8s =>
+Start a pod
+    kubectl run nginx --image=nginx --port=80
+
+Check the status of the pod
+    kubectl get pods
+
+Check the logs 
+    kubectl logs nginx
+
+Describe the pod to see more details
+    kubectl describe pod nginx
+
+What our system looks like right now
+    Cluster ->
+        Control-Pane
+        Worker 1 -> pod -> nginx container
+        Worker 2
+
+Good questions to ask
+How can I stop a pod?
+How can I visit the pod? Which port is it available on?
+How many pods can I start?
+
+Stop the pod
+ 
+Stop the pod by running
+    kubectl delete pod nginx
+
+Check the current state of pods
+    kubectl get pods
+
+Kubernetes manifest =>
+A manifest defines the desired state for Kubernetes resources, such as Pods, Deployments, Services, etc., in a declarative manner. 
+
+Original command
+    kubectl run nginx --image=nginx --port=80
+
+Manifest ->
+    apiVersion: v1
+    kind: Pod
+    metadata:
+        name: nginx
+    spec:
+        containers:
+        - name: nginx
+        image: nginx
+        ports:
+        - containerPort: 80
+
+Breaking down the manifest
+apiVersion: v1 - when was "Pod" introduced as a k8s construct
+kind: Pod -> what we are Starting
+metadata:
+    name: nginx - name for pod
+-----------------
+- name: nginx
+image: nginx
+ports:
+- containerPort: 80
+-------------------- First Container to start inside the pod
+Port on which the pod will be listening for incoming requests.
+
+Applying the manifest
+    kubectl apply -f manifest.yml
+Delete the pod
+    kubectl delete pod nginx
+
+Checkpoint =>
+
+We have created 
+Cluster
+Nodes
+Images
+Containers
+Pods
+---------------------------------------------
+while starting postgres, we have to give an env variable also, otherwise it will crash. It won't terminate it but it will keep on trying.
+
+big advantage of using k8s -> cloud agnostic, we can move from one cloud service to another and the procedure will be the same.
+
+we can write multiple pod specifications in a single YML file. We can put limitations on a pods hardware.(min 0.5GB Ram, 1 CPU like this)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
