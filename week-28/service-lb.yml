@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+spec:
+  selector:
+    app: nginx
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+# In a load balancer service the load balancer's IP is exposed to the world, and this load balancer will take care of the incoming traffic to be redirected to the pods.

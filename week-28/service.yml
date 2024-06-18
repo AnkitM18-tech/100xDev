@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+spec:
+  selector:
+    app: nginx
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+      nodePort: 30007 # This port can be any valid port within the NodePort range
+  type: NodePort
+# will expose the port 30007 on the nodes with specified protocol, when the request comes it will redirect those to port 80 of pods. The Node's IP will be exposed to the world in this kind of service.
