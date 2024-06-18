@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecom-backend-config
+data:
+  database_url: "mysql://ecom-db:3306/shop"
+  cache_size: "1000"
+  payment_gateway_url: "https://payment-gateway.example.com"
+  max_cart_items: "50"
+  session_timeout: "3600"
+# database_url -> here it is just a internal db url, so we are putting it here, else if it would have been a neondb url -> put into secrets.
