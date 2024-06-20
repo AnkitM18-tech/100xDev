@@ -1,0 +1,551 @@
+Volumes in docker =>
+Pretext
+The following docker image runs a Node.js app that writes peridically to the filesystem - 
+https://hub.docker.com/r/100xdevs/write-random
+
+NodeJs Code ->
+
+const fs = require('fs');
+const path = require('path');
+
+// Function to generate random data
+function generateRandomData(length) {
+    let characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+        result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return result;
+}
+
+// Write random data to a file
+function writeRandomDataToFile(filePath, dataLength) {
+    const data = generateRandomData(dataLength);
+    fs.writeFile(filePath, data, (err) => {
+        if (err) {
+            console.error('Error writing to file', err);
+        } else {
+            console.log('Data written to file', filePath);
+        }
+    });
+}
+
+// Define the file path and data length
+const filePath = path.join(__dirname, '/generated/randomData.txt');
+const dataLength = 100; // Change this to desired length of random data
+
+// Write random data to file every 10 seconds
+setInterval(() => {
+    writeRandomDataToFile(filePath, dataLength);
+}, 10000); // 10000 ms = 10 seconds
+
+// Keep the script running
+console.log('Node.js app is running and writing random data to randomData.txt every 10 seconds.');
+
+Run it in docker
+Try running the image above in your local machine
+docker run 100xdevs/write-random
+
+Try going to the container and seeing the contents of the container
+docker exec -it container_id /bin/bash
+cat randomData.txt
+
+Where is this file being stored?
+The data is stored in the docker runtime filesystem . When the container dies, the data dies with it. This is called ephemeral storage
+
+If you want to persist data across container stops and starts, you can use Volumes in Docker
+
+Bind mounts ->
+Replace the mount on the left with a folder on your own machine
+
+docker run -v D:\\100xDev\\week-29\\class-5-k8s\\generated:/usr/src/app/generated 100xdevs/write-random
+
+whatever stored here /usr/src/app/generated inside the container, will also get stored in D:\100xDev\week-29\class-5-k8s\generated folder on my machine.
+
+Volume Mounts
+
+Create a volume
+docker volume create hello
+
+Mount data to volume
+docker run -v hello:/usr/src/app/generated 100xdevs/write-random
+
+If you stop the container in either case, the randomFile.txt file persists
+
+Volumes in kubernetes =>
+
+Ref - https://kubernetes.io/docs/concepts/storage/volumes/
+
+Volumes ->
+
+In Kubernetes, a Volume is a directory, possibly with some data in it, which is accessible to a Container as part of its filesystem. Kubernetes supports a variety of volume types, such as EmptyDir, PersistentVolumeClaim, Secret, ConfigMap, and others.
+
+Why do you need volumes?
+- If two containers in the same pod want to share data/fs.
+eg. Inside Cluster -> Nodes -> Inside Node -> pod -> Inside pod we have containers that want to share data.
+c1,c2 -> ephemeral volume
+
+- If you want to create a database that persists data even when a container restarts (creating a DB)
+eg. Inside Cluster -> Nodes -> Inside Node -> pod -> Persistent Volume 1(AWS) => 10gb PVC
+
+- Your pod just needs extra space during execution (for caching lets say) but doesnt care if it persists or not.
+eg. Some Place inside the Node. c1 -> volume inside Node.
+
+Types of volumes =>
+- Ephemeral Volume
+Temporary volume that can be shared amongst various containers of a pod.  When the pods dies, the volume dies with it.
+For example - 
+    ConfigMap
+    Secret
+    emptyDir
+
+- Persistent Volume => exist outside of our k8s cluster
+A Persistent Volume (PV) is a piece of storage in the cluster that has been provisioned by an administrator or dynamically provisioned using Storage Classes. It is a resource in the cluster just like a node is a cluster resource. PVs are volume plugins like Volumes but have a lifecycle independent of any individual Pod that uses the PV. This API object captures the details of the implementation of the storage, be that NFS, iSCSI, or a cloud-provider-specific storage system.
+
+- Persistent volume claim =>
+A Persistent Volume Claim (PVC) is a request for storage by a user. It is similar to a Pod. Pods consume node resources and PVCs consume PV resources. Pods can request specific levels of resources (CPU and Memory). Claims can request specific size and access modes (e.g., can be mounted once read/write or many times read-only).
+
+
+DevOps administrators can create PVs just like clusters and nodes etc.
+
+After creating a PV, we as developer can create a PVC to be attached to it.
+Then a whenever a pod starts we can mount it over this PVC.
+
+Ephemeral volumes =>
+
+A lot of times you want two containers in a pod to share data. 
+But when the pods dies, then the data can die with it. 
+
+Setup
+Create a manifest that starts two pods which share the same volume
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shared-volume-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shared-volume-app
+  template:
+    metadata:
+      labels:
+        app: shared-volume-app
+    spec:
+      containers:
+      - name: writer
+        image: busybox
+        command: ["/bin/sh", "-c", "echo 'Hello from Writer Pod' > /data/hello.txt; sleep 3600"]
+        volumeMounts:
+        - name: shared-data
+          mountPath: /data
+      - name: reader
+        image: busybox
+        command: ["/bin/sh", "-c", "cat /data/hello.txt; sleep 3600"]
+        volumeMounts:
+        - name: shared-data
+          mountPath: /data
+      volumes:
+      - name: shared-data
+        emptyDir: {}
+
+```
+Apply the manifest
+    kubectl apply -f kube.yml
+
+Check the reader container and see if you can see the volume data in there
+    kubectl exec -it shared-volume-deployment-74d67d6567-tcdsl --container reader sh 
+
+
+emptyDir -> starts with the pod and when the pod dies it dies with it.
+
+# If we create 2 replicas, then 2 pods will be created and containers in each pod will have their own shared ephemeral volume.
+
+
+Persistent volumes =>
+
+Just like our kubernetes cluster has nodes where we provision our pods.
+We can create peristent volumes where our pods can claim (ask for) storage
+
+Persistent volumes can be provisioned statically or dynamically.
+
+Static persistent volumes =>
+
+Creating a NFS
+NFS is one famous implementation you can use to deploy your own persistent volume
+
+I’m running one on my aws server - 
+
+```
+
+version: '3.7'
+
+services:
+  nfs-server:
+    image: itsthenetwork/nfs-server-alpine:latest
+    container_name: nfs-server
+    privileged: true
+    environment:
+      SHARED_DIRECTORY: /exports
+    volumes:
+      - ./data:/exports:rw
+    ports:
+      - "2049:2049"
+    restart: unless-stopped
+
+Make sure the 2049 port on your machine is open
+```
+Creating a pv and pvc
+Create a persistent volume claim and persistent volume
+
+```
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs
+  nfs:
+    path: /exports
+    server: 52.66.197.168
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: nfs
+
+```
+
+Create a pod =>
+
+```
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mongo-pod
+spec:
+  containers:
+  - name: mongo
+    image: mongo:4.4
+    command: ["mongod", "--bind_ip_all"]
+    ports:
+    - containerPort: 27017
+    volumeMounts:
+    - mountPath: "/data/db"
+      name: nfs-volume
+  volumes:
+  - name: nfs-volume
+    persistentVolumeClaim:
+      claimName: nfs-pvc
+
+```
+
+NFS -> Networked File System -> PV deployment implementation
+
+k8's cluster 
+
+we will create an EC2 instance, inside which we will have docker running our NFS.
+
+and since docker container is not persistent, we can mount our data into a folder on the EC2 instance.
+So whatever data the NFS is storing, we will back it up in that mounted folder.
+
+Another approach would be we can run NFS directly in our EC2 instance. Then expose NFS protocol via a port on the EC2 instance and connect our k8s cluster to it.
+
+Or we can opt for block storage from cloud providers instead of deploying our PV ourselves.
+
+Then we can create a PV in k8s cluster which has access to the NFS, so that eventually the developers can make PVC.
+
+PV ->
+```
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs
+  nfs:
+    path: /exports
+    server: 52.66.197.168 -> IP of EC2 server
+
+# storageClassName -> this changes as the storage provider changes (self deployed nfs/aws/gcp/vultr block storage)
+
+path: /exports -> the folder which we created inside the EC2 NFS server.
+
+
+```
+
+```
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: nfs
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mongo-pod
+spec:
+  containers:
+    - name: mongo
+      image: mongo:4.4
+      command: ["mongod", "--bind_ip_all"]
+      ports:
+        - containerPort: 27017
+      volumeMounts:
+        - mountPath: "/data/db" - the place where the mongodb data gets stored
+          name: nfs-volume
+  volumes:
+    - name: nfs-volume
+      persistentVolumeClaim:
+        claimName: nfs-pvc
+
+
+Only when the PVC gets mount to the PV, then only the pod will start. If there are no PVs available which can handle the constraints of the PVC, then the pod will not start.
+
+
+```
+when a PVC gets bound to a PV, no one else can claim it.
+
+PVC bound to the PV, is volume of the pod starting.
+
+The folder in the NFS server is mounted to the PV. PV inside the k8s cluster is bound to the PVC. Eventually the PVC becomes the volume of the pod.
+
+
+Automatic pv creation =>
+
+Ref - https://docs.vultr.com/how-to-provision-persistent-volume-claims-on-vultr-kubernetes-engine
+
+Create a persistent volume claim with storageClassName set to vultr-block-storage-hdd
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: csi-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 40Gi
+  storageClassName: vultr-block-storage-hdd
+
+
+Apply the pod manifest =>
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mongo-pod
+spec:
+  containers:
+  - name: mongo
+    image: mongo:4.4
+    command: ["mongod", "--bind_ip_all"]
+    ports:
+    - containerPort: 27017
+    volumeMounts:
+    - name: mongo-storage
+      mountPath: /data/db
+  volumes:
+  - name: mongo-storage
+    persistentVolumeClaim:
+      claimName: csi-pvc
+
+Explore the resources created ->
+
+kubectl get pv
+kubectl get pvc
+kubectl get pods
+
+Put some data in mongodb ->
+
+kubectl exec -it mongo-pod -- mongo
+use mydb
+db.mycollection.insert({ name: "Test", value: "This is a test" })
+exit
+
+Delete and restart the pod ->
+
+kubectl delete pod mongo-pod
+kubectl apply -f mongo.yml
+
+Check if the data persists ->
+
+kubectl exec -it mongo-pod -- mongo
+use mydb
+db.mycollection.find()
+
+Just like how the cloud provider creates a LB outside the cluster, likewise the developer doesn't need to worry about the PV provisioning. Developer just have to write manifest for PVC and PV will get automatically created by the cloud provider.
+
+
+We can define and mount multiple volumes to our pod.(secrets, configmaps etc)
+
+A single PVC we can connect to multiple pods as well.
+
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: nfs
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mongo-pod
+spec:
+  containers:
+    - name: mongo
+      image: mongo:4.4
+      command: ["mongod", "--bind_ip_all"]
+      ports:
+        - containerPort: 27017
+      volumeMounts:
+        - mountPath: "/data/db"
+          name: nfs-volume
+        - mountPath: "/data/config"
+          name: config-volume
+  volumes:
+    - name: nfs-volume
+      persistentVolumeClaim:
+        claimName: nfs-pvc
+    - name: config-volume
+      secret:
+        secretName: mongo-secret-config
+
+```
+
+PV => PVC mapping is done on cluster basis, so people having their own k8s cluster can connect to the publicly available NFS and read and write to it.
+
+
+----------------------------------------
+
+What we’re learning =>
+
+HPA - Horizontal Pod Autoscaling
+Node Autoscaling
+Resource management
+
+Horizontal pod Autoscaler =>
+Ref - https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
+
+- A Horizontal Pod Autoscaler (HPA) is a Kubernetes feature that automatically adjusts the number of pod replicas in a deployment, replica set, or stateful set based on observed metrics like CPU utilisation or custom metrics.
+
+- This helps ensure that the application can handle varying loads by scaling out (adding more pod replicas) when demand increases and scaling in (reducing the number of pod replicas) when demand decreases.
+
+Horizontal scaling =>
+- As the name suggests, if you add more pods to your cluster, it means scaling horizontally. Horizontally refers to the fact that you havent increased the resources on the machine.
+
+
+Architecture =>
+
+Kubernetes implements horizontal pod autoscaling as a control loop that runs intermittently (it is not a continuous process) (once every 15s)
+ 
+- cadvisor -  https://github.com/google/cadvisor
+- Metrics server - The Metrics Server is a lightweight, in-memory store for metrics. It collects resource usage metrics (such as CPU and memory) from the kubelets and exposes them via the Kubernetes API (Ref - https://github.com/kubernetes-sigs/metrics-server/issues/237)
+
+
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+or
+Apply from here - https://github.com/100xdevs-cohort-2/week-28-manifests
+
+
+Try getting the metrics ->
+
+kubectl top pod -n kube-system
+kubectl top nodes -n kube-system
+
+Sample request that goes from hpa controller to the API server ->
+- GET https://338eb37e-2824-4089-8eee-5a05f84fb85e.vultr-k8s.com:6443/apis/metrics.k8s.io/v1beta1/namespaces/default/pods
+
+
+HPA takes care of the replicas to be created and reapply the manifest according to the traffic.
+
+k8s cluster =>
+
+Master Node
+- API Server - hpa controller loops once in 15s.
+
+
+Worker Node 
+  - kubelet
+  - cadvisor - tells kubelet to store the stat in metrics server
+  - metrics server - we have to add in our node, takes stats from every worker node and host them on the API server on master node.
+  - pod 1 - sends pod level metrics to cadvisor
+
+
+k8s by default expose the pod level metrics but don't store them, so we need to add the metrics server.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
