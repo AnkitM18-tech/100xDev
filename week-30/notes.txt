@@ -1,0 +1,363 @@
+What is an exchange ?
+    - An exchange lets you swap assets, usually INR for a stock like TATA.
+
+Exchanges
+    NYSE
+    NSE
+    BSE
+    Binance
+    CoinBase
+
+Brokers
+    Robinhood
+    Zerodha
+    Groww
+
+Core concepts ->
+
+1. Current Price
+    A price feed which constantly gives you the current price of a stock (the last value at which it was traded)
+2. Time series data
+    A Database that stores the price of a stock over time.
+3. Orderbook
+    The current set of open orders that a user can come and trade on
+4. Order placement UI
+    A UI widget that a user can use to place an order
+
+
+You build an exchange usually by copying over the API structure of an existing exchange - https://binance-docs.github.io/apidocs/spot/en/#new-order-trade
+
+
+Types of orders ->
+There are two types of orders that you place on an exchange.
+    - Market and Limit orders
+Market order =>
+    I want to buy stocks of TATA for Rs 2000
+    I want to buy ETH worth $200
+    (market, price, side) is the only input to the API
+
+e.g -> user --> TATA Rs.2000 Buy --> Exchange BE
+<-- 10 TATA stocks bought
+
+Limit order
+    I will buy 1 stock of TATA at Rs 200/stock
+    (market, qty, price, side) is the input to the API
+
+e.g -> user --> Buy 1 quantity of TATA at Rs 200/stock
+<-- order placed on orderbook.
+
+Jargon =>
+
+Markets ->
+    - Whenever you trade, you swap one asset for another. 
+    - Every pair that you can trade is called a market.
+For example - 
+    ETH-USDC
+    TATA-INR
+    ETH-BTC (Usualy a combination of two markets, ETH-USDC and BTC-USDC)
+
+Base asset
+    - The asset that is being traded (TATA).
+Quote asset
+    - The asset it is being traded with.
+
+Orderbook
+    - A list of currently available limit orders that people have placed. The more the number of orders, the more liquid the exchange is considered.
+
+Bid (green part)
+    A limit order of the following type - 
+    I will buy 5 stocks of TATA for Rs 200/stock
+
+Ask (red part)
+    A limit order of the following type - 
+    I will sell 5 stocks of TATA for Rs 201/stock
+
+
+Market makers
+    Big companies that keep the orderbook liquid (that have a lot of open orders on the orderbook)
+
+How orders are made ?
+    - Market makers making the book liquid
+    - Step 1 is that you need market makers to place orders on the book. If they dont, then you dont really have an exchange yet. They are constantly placing orders on the book based on what they think is the fair price of the stock
+
+Users sending in orders that eat the book ->
+    - Users first send an order to get a quote for the quantity they want to buy.
+    - Users can send orders that get matched to the current orderbook. 
+    - Whenever a big order is made (orderbook gets eaten), Market makers make the book liquid again.
+
+- Even users are placing a limit order, but they set the type to be ioc (immediate or cancel) and the price to be the quote they received
+
+
+Backend Routes
+Users
+    POST /api/v1/signup - Lets a user signup
+    POST /api/v1/signin - Lets a user signin, returns a jwt
+
+Orders
+    POST /api/v1/order - Lets a user place an order. Returns orderId and fill status 
+eg ->
+type: limit | market
+kind: buy | sell
+price: number
+quantity: number
+market: TATA-INR
+
+    GET /api/v1/order/:orderId   - Returns fill status
+    DELETE /api/v1/order/:orderId - Removes an order off the book (if it isn’t filled yet)
+    POST /api/v1/order/quote 
+eg ->
+kind: buy | sell
+quantity: number
+market: TATA-INR
+
+Websocket streams
+The real time part of an app like this would be the following -
+    Current price
+    Current orderbook
+    Recent trades
+    Graph data
+
+Coding the API Server
+
+Initialize the project
+    mkdir orderbook-server
+    cd orderbook-server
+    npm init -y
+    npx tsc --init
+    npm install express redis uuid zod
+    npm install typescript ts-node @types/express @types/node @types/redis @types/uuid
+
+Update rootDir and outDir
+Create src/orderbook.ts ->
+```
+
+interface Order {
+    price: number;
+    quantity: number;
+    orderId: string;
+}
+
+interface Bid extends Order {
+    side: 'bid';
+}
+
+interface Ask extends Order {
+    side: 'ask';
+}
+
+interface Orderbook {
+    bids: Bid[];
+    asks: Ask[];
+}
+
+export const orderbook: Orderbook = {
+  bids: [
+    
+  ],
+  asks: [
+    
+  ]
+}
+
+export const bookWithQuantity: {bids: {[price: number]: number}; asks: {[price: number]: number}} = {
+    bids: {},
+    asks: {}
+}
+
+```
+
+Create src/types.ts ->
+
+```
+
+import { z } from "zod";
+
+export const OrderInputSchema = z.object({
+  baseAsset: z.string(),
+  quoteAsset: z.string(),
+  price: z.number(),
+  quantity: z.number(),
+  side: z.enum(['buy', 'sell']),
+  type: z.enum(['limit', 'market']),
+  kind: z.enum(['ioc']).optional(),
+});
+
+```
+
+Create src/index.ts ->
+
+```
+
+import express from "express";
+import { OrderInputSchema } from "./types";
+import { orderbook, bookWithQuantity } from "./orderbook";
+
+const BASE_ASSET = 'BTC';
+const QUOTE_ASSET = 'USD';
+
+const app = express();
+app.use(express.json());
+
+let GLOBAL_TRADE_ID = 0;
+
+app.post('/api/v1/order', (req, res) => {
+  const order = OrderInputSchema.safeParse(req.body);
+  if (!order.success) {
+    res.status(400).send(order.error.message);
+    return;
+  }
+
+  const { baseAsset, quoteAsset, price, quantity, side, kind } = order.data;
+  const orderId = getOrderId();
+
+  if (baseAsset !== BASE_ASSET || quoteAsset !== QUOTE_ASSET) {
+    res.status(400).send('Invalid base or quote asset');
+    return;
+  }
+
+  const { executedQty, fills } = fillOrder(orderId, price, quantity, side, kind);
+
+  res.send({
+    orderId,
+    executedQty,
+    fills
+  });
+});
+
+app.listen(3000, () => {
+  console.log('Server is running on port 3000');
+});
+
+
+function getOrderId(): string {
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+}
+
+interface Fill {
+    "price": number,
+    "qty": number,
+    "tradeId": number,
+}
+
+function fillOrder(orderId: string, price: number, quantity: number, side: "buy" | "sell", type?: "ioc"): { status: "rejected" | "accepted"; executedQty: number; fills: Fill[] } {
+    const fills: Fill[] = [];
+    const maxFillQuantity = getFillAmount(price, quantity, side);
+    let executedQty = 0;
+
+    if (type === 'ioc' && maxFillQuantity < quantity) {
+        return { status: 'rejected', executedQty: maxFillQuantity, fills: [] };
+    }
+    
+    if (side === 'buy') {
+        orderbook.asks.forEach(o => {
+            if (o.price <= price && quantity > 0) {
+                console.log("filling ask");
+                const filledQuantity = Math.min(quantity, o.quantity);
+                console.log(filledQuantity);
+                o.quantity -= filledQuantity;
+                bookWithQuantity.asks[o.price] = (bookWithQuantity.asks[o.price] || 0) - filledQuantity;
+                fills.push({
+                    price: o.price,
+                    qty: filledQuantity,
+                    tradeId: GLOBAL_TRADE_ID++
+                });
+                executedQty += filledQuantity;
+                quantity -= filledQuantity;
+                if (o.quantity === 0) {
+                    orderbook.asks.splice(orderbook.asks.indexOf(o), 1);
+                }
+                if (bookWithQuantity.asks[price] === 0) {
+                    delete bookWithQuantity.asks[price];
+                }
+            }
+        });
+
+        // Place on the book if order not filled
+        if (quantity !== 0) {
+            orderbook.bids.push({
+                price,
+                quantity: quantity - executedQty,
+                side: 'bid',
+                orderId
+            });
+            bookWithQuantity.bids[price] = (bookWithQuantity.bids[price] || 0) + (quantity - executedQty);
+        }
+    } else {
+        orderbook.bids.forEach(o => {
+            if (o.price >= price && quantity > 0) {
+                const filledQuantity = Math.min(quantity, o.quantity);
+                o.quantity -= filledQuantity;
+                bookWithQuantity.bids[price] = (bookWithQuantity.bids[price] || 0) - filledQuantity;
+                fills.push({
+                    price: o.price,
+                    qty: filledQuantity,
+                    tradeId: GLOBAL_TRADE_ID++
+                });
+                executedQty += filledQuantity;
+                quantity -= filledQuantity;
+                if (o.quantity === 0) {
+                    orderbook.bids.splice(orderbook.bids.indexOf(o), 1);
+                }
+                if (bookWithQuantity.bids[price] === 0) {
+                    delete bookWithQuantity.bids[price];
+                }
+            }
+        });
+
+        // Place on the book if order not filled
+        if (quantity !== 0) {
+            orderbook.asks.push({
+                price,
+                quantity: quantity,
+                side: 'ask',
+                orderId
+            });
+            bookWithQuantity.asks[price] = (bookWithQuantity.asks[price] || 0) + (quantity);
+        }
+    }
+
+    return {
+        status: 'accepted',
+        executedQty,
+        fills
+    }
+}
+
+function getFillAmount(price: number, quantity: number, side: "buy" | "sell"): number {
+    let filled = 0;
+    if (side === 'buy') {
+        orderbook.asks.forEach(o => {
+            if (o.price < price) {
+                filled += Math.min(quantity, o.quantity);
+            }
+        });
+    } else {
+        orderbook.bids.forEach(o => {
+            if (o.price > price) {
+                filled += Math.min(quantity, o.quantity);
+            }
+        });
+    }
+    return filled;
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
